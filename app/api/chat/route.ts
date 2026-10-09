@@ -42,7 +42,7 @@ export async function POST(request: Request) {
         )
     : [];
 
-  const model = env.ANU_GEMINI_MODEL || "gemini-3.8-flash";
+  const model = env.ANU_GEMINI_MODEL || "gemini-3.7-flash";
   if (!/^[a-zA-Z0-9._-]{1,100}$/.test(model)) {
     return json({ error: "Anu is temporarily unavailable. Please try again later." }, 500);
   }
