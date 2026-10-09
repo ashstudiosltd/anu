@@ -1,0 +1,9 @@
+# Runtime configuration. Never commit real secrets.
+GEMINI_API_KEY=replace-locally
+ANU_GEMINI_MODEL=gemini-3.5-flash-lite
+NEXT_PUBLIC_SUPABASE_URL=https://lozgsjyvoimblijxpllr.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_WWSKXBFV9qBj0k_pQKLBAg_CpruR0HJ
+DEVVRATS_AUTH_ORIGIN=http://localhost:3001
+# Generate a random value independently in each environment (at least 32 bytes).
+ANU_PREVIEW_SECRET=replace-with-a-long-random-secret
+SABHA_PUBLIC_URL=http://localhost:3000

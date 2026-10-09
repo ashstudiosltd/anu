@@ -6,19 +6,21 @@ export default function FoundationSources() {
       <Link className="source-back" href="/">← Back to Anu</Link>
       <div className="source-orb" aria-hidden="true"><span /></div>
       <p className="source-eyebrow">ANU KNOWLEDGE · SOURCE NOTE</p>
-      <h1>Devvrats foundation reports</h1>
-      <p className="source-lead">This preview uses founder-provided reports describing the vision for Devvrats and Anu.</p>
+      <h1>Devvrats sources</h1>
+      <p className="source-lead">Anu’s Devvrats knowledge combines the community’s public website with founder-provided reports about its vision.</p>
       <section className="source-card">
-        <h2>What these notes cover</h2>
+        <h2>Official public website</h2>
+        <p><a href="https://www.devvrats.in/" target="_blank" rel="noreferrer">devvrats.in</a> describes Devvrats’ community mission and introduces Anu, Sabha, Pata, ranked kata challenges, and Devvrats ID.</p>
+      </section>
+      <section className="source-card">
+        <h2>Founder-provided reports</h2>
         <ul>
-          <li>Devvrats as a developer community and connected ecosystem.</li>
-          <li>Sabha as the community and collaboration space for blogs, conversations, and projects.</li>
-          <li>DID as a proposed developer identity and contribution layer.</li>
-          <li>Patas as a proposed progression and recognition layer.</li>
-          <li>Anu’s character, principles, privacy boundaries, and intended roadmap.</li>
+          <li>Longer-term Devvrats ecosystem vision.</li>
+          <li>Proposed DID and Patas capabilities and roadmap.</li>
+          <li>Anu’s character, principles, and intended role.</li>
         </ul>
       </section>
-      <aside className="source-caution"><strong>Vision is not proof of launch.</strong> These reports describe intended products and future capabilities. This preview does not connect to live Sabha, DID, Patas, or GitHub data. Anu should say when a current implementation detail cannot be verified.</aside>
+      <aside className="source-caution"><strong>Public descriptions and preview access are different.</strong> The website describes Devvrats products, while founder reports add future plans. This local preview does not connect to live Sabha, DID, Pata/Patas, GitHub, member, or project data. Anu should say when a current implementation detail cannot be verified.</aside>
     </main>
   );
 }

@@ -1,12 +1,20 @@
+# Anu — first Vercel release
+
+**Current runtime:** standard Next.js on Vercel. Local development uses `npm run dev` on port 5173 and ignored `.env.local`; `.dev.vars` belongs to the previous Sites runtime. Production setup and release limitations are documented in [docs/vercel-deployment.md](docs/vercel-deployment.md). Older notes below describe the development history and may refer to the former Cloudflare/Vinext setup.
+
 # Anu — Devvrats
 
-Anu's private 0.1 preview. The chat route uses Gemini from the server and defaults to `gemini-3.7-flash` for the free-tier period.
+Anu's private 0.1 preview. The chat route uses Gemini from the server and defaults to `gemini-3.5-flash-lite` for low-latency free-tier chat.
 
-## Gemini setup
+## Local Gemini setup
 
-Add a free-tier Gemini API key as a server-side Site secret named `GEMINI_API_KEY`. Never commit the key or add it to browser code. Optionally set `ANU_GEMINI_MODEL` to a model enabled for the project's tier. The current preview discloses that messages are sent to Gemini and that free-tier data may be used to improve Google products. Do not use this preview with private member data or secrets.
+For local development, copy `.dev.vars.example` to `.dev.vars` and put your rotated Gemini key in the `GEMINI_API_KEY` entry. Keep `.dev.vars` on your machine: it is ignored by Git. Never commit the key or add it to browser code. Optionally set `ANU_GEMINI_MODEL` to a model enabled for your tier.
 
-The remainder of this file describes the Sites runtime used to build and publish the preview.
+Start the local app with `npm run dev`; the portable preview normally runs at `http://localhost:5173`. The chat route reads the key through the local Cloudflare Worker runtime. If you change `.dev.vars` while the server is running and the key is not picked up, stop and restart the dev server.
+
+The current preview discloses that messages are sent to Gemini and that free-tier data may be used to improve Google products. Do not use this preview with private member data or secrets.
+
+Production deployment is paused while developing locally. The existing Codex Site remains hosted separately. Vercel deployment will need its own environment-variable setup and a compatibility review before publishing.
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 
@@ -132,3 +140,47 @@ The portable build runs Vinext directly without a host `timeout` command. The ma
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+
+Main's Fundamentals demo now calls `/api/integrations/main/chat`. The endpoint
+uses the same reply service, constitution, knowledge and Gemini secret as the
+full `/api/chat`, with a centrally defined concise demo policy and bounded context.
+Run this Anu checkout on port 5173 alongside Devvrats.Main locally. No production
+host or deployment was configured. Public-launch rate limits still need a shared
+store rather than the current per-instance budget.
+
+### Sabha Blogs capability (local)
+
+`POST /api/integrations/blogs/chat` is the central Blogs capability. It retrieves
+current public reference data from Sabha's `/api/anu/blogs-context` and applies
+Blogs-specific instructions on top of Anu's shared constitution and knowledge.
+Anu defaults to the local Sabha server at `http://127.0.0.1:3000`.
+Set server runtime `SABHA_PUBLIC_URL` to change that address; use the deployed
+Sabha HTTPS origin before production deployment. Gemini credentials remain here.
+The Main demo and full chat continue using their existing endpoints.
+
+Retrieval considers the latest 80 public posts plus any selected article,
+returns up to five references, and bounds article text (truncation is marked).
+This is current retrieval, not model training or an exhaustive archive index.
+Rate budgets are per instance and require shared storage before public launch.
+
+## Shared Devvrats accounts
+
+Anu verifies Main’s Supabase cookies using `auth.getUser()` on the server. It never accepts user names or membership claims from a request body. Only the verified display name is passed to Gemini. `GET /api/auth/session` returns the member ID/name or guest allowance; it is private and never cached. Account changes are checked on focus and once a minute. Chat requests also compare the current verified account to the account owning the client’s history, preventing a stale tab from sending another account’s context.
+
+Use **http://localhost:5173/** for Anu and **http://localhost:3001/** for Main locally. Cookies work across localhost ports; `127.0.0.1` has separate cookies. Main is the only sign-in UI. Anu’s Sign in links there with a validated return destination. Signed-in visitors arriving at Main’s registration page return immediately without another provider prompt.
+
+Local runtime configuration lives in ignored `.dev.vars`: Main’s `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DEVVRATS_AUTH_ORIGIN`, and a random `ANU_PREVIEW_SECRET`. Restart Anu after changing these. No service-role key is needed. A real local preview signing secret has been generated without exposing it.
+
+Guests get five short messages per 24-hour browser preview. The quota is enforced on the server using a signed HttpOnly cookie, so a new conversation or refresh does not reset it. Clearing cookies can reset this preview; this is not an abuse-resistant public rate limiter. Requests, including failed attempts, consume allowance. Members get the standalone conversation limits (4,000-character messages and bounded context), with no guest quota. Embedded Main/Blogs modes retain their existing policies.
+
+History remains in tab sessionStorage, keyed by verified account ID or guest. Signing out deletes that account’s local history in the current tab and clears the shared auth session; it does not delete other tabs’ stored copies. History does not sync across devices. Existing unscoped preview history is not imported into member histories.
+
+### Production configuration before deployment
+
+1. Deploy Main, Anu and eventually Sabha under trusted `devvrats.in` subdomains, over HTTPS. Shared cookies use `.devvrats.in`. Every subdomain receiving this cookie must be trusted; do not host untrusted applications there.
+2. Set Anu runtime values to the same Main Supabase project/publishable key, `DEVVRATS_AUTH_ORIGIN=https://www.devvrats.in`, and an independently generated `ANU_PREVIEW_SECRET`. Keep Gemini server-only. Set Main’s `NEXT_PUBLIC_ANU_URL=https://anu.devvrats.in/` if overriding its default.
+3. In **Main’s Supabase project → Authentication → URL Configuration**, set Site URL to `https://www.devvrats.in` and allow `https://www.devvrats.in/auth/callback` (and `https://devvrats.in/auth/callback` if supporting apex login). For development allow `http://localhost:3001/auth/callback`. Query strings carry a validated first-party return path. Configure Google/GitHub providers on Main’s project; their provider callback is the Supabase callback, not Anu.
+4. Anu has no separate OAuth exchange: Main exchanges the code and writes the shared cookie, then returns to Anu. Existing host-only sessions may require one fresh sign-in after deployment.
+5. Add a durable edge/account rate limiter before public launch. Never cache auth responses or chat responses. Confirm an actual Google/GitHub login and return flow after provider/dashboard settings are configured; this has not been completed with a real member during this implementation.
+
+Sabha currently uses a different Supabase project. Do not replace its environment values before completing the migration plan at `/Users/devvrats./Desktop/sabha/docs/shared-auth-migration.md`.

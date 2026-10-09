@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AnuThemeProvider } from "@/components/anu-theme-provider";
 
 export const metadata: Metadata = {
   title: "Anu — Your guide within Devvrats",
@@ -16,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className="antialiased">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased"><AnuThemeProvider>{children}</AnuThemeProvider></body>
     </html>
   );
 }
