@@ -112,7 +112,7 @@ export function AnuChat() {
         </div>
 
         <div className="sidebar-bottom">
-          <div className="privacy-note"><span className="privacy-lock">✳</span><p><strong>A thoughtful companion.</strong><br />Not saved by Anu. Free-tier prompts may help improve Google products.</p></div>
+          <div className="privacy-note"><span className="privacy-lock">✳</span><p><strong>A thoughtful companion.</strong><br />Not saved by Anu. Messages go to Gemini; free-tier data may improve Google products.</p></div>
           <div className="profile-row">
             <span className="profile-avatar">D</span>
             <span className="profile-copy"><strong>Devvrat</strong><small>Community preview</small></span>
@@ -145,7 +145,7 @@ export function AnuChat() {
               <div className="suggestions" aria-label="Suggested prompts">
                 {suggestions.map(({ icon: Icon, label, prompt }) => <button key={label} className="suggestion" onClick={() => void sendMessage(prompt)}><span className="suggestion-icon"><Icon size={16} /></span><span>{label}</span><ArrowUp className="suggestion-arrow" size={14} /></button>)}
               </div>
-              <p className="preview-caption">AI preview · Google may use free-tier prompts to improve products. Keep sensitive details private.</p>
+              <p className="preview-caption">AI preview · Messages go to Gemini. Free-tier data may improve Google products; keep sensitive details private.</p>
             </div>
           ) : (
             <div className="thread-wrap">
@@ -163,7 +163,7 @@ export function AnuChat() {
                 <textarea aria-label="Message Anu" placeholder="Continue the conversation..." value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={4000} />
                 <div className="composer-bottom"><span className="composer-hint">Shift + Enter for a new line</span><button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || busy}>{busy ? <span className="tiny-spinner" /> : <ArrowUp size={18} />}</button></div>
               </form>
-              <div className="thread-footnote">Anu can make mistakes. Verify important information. Free-tier prompts may be used to improve Google products.</div>
+              <div className="thread-footnote">Anu can make mistakes. Verify important information. Messages go to Gemini; free-tier data may improve Google products.</div>
             </div>
           )}
         </div>

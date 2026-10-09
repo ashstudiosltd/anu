@@ -1,4 +1,12 @@
-# vinext-starter
+# Anu — Devvrats
+
+Anu's private 0.1 preview. The chat route uses Gemini from the server and defaults to `gemini-3.7-flash` for the free-tier period.
+
+## Gemini setup
+
+Add a free-tier Gemini API key as a server-side Site secret named `GEMINI_API_KEY`. Never commit the key or add it to browser code. Optionally set `ANU_GEMINI_MODEL` to a model enabled for the project's tier. The current preview discloses that messages are sent to Gemini and that free-tier data may be used to improve Google products. Do not use this preview with private member data or secrets.
+
+The remainder of this file describes the Sites runtime used to build and publish the preview.
 
 A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 
