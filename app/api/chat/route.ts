@@ -64,9 +64,14 @@ export async function POST(request: Request) {
           parts: [{ text: `${ANU_CONSTITUTION}\n\n${DEVVRATS_FOUNDATION_KNOWLEDGE}` }],
         },
         contents,
-        generationConfig: { temperature: 0.65, maxOutputTokens: 1200 },
+        // Keep replies responsive for chat. Gemini 3.7 uses thinkingLevel
+        // instead of the older sampling controls such as temperature.
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: "low" },
+          maxOutputTokens: 1200,
+        },
       }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(45_000),
     });
 
     if (!upstream.ok) {
@@ -85,7 +90,12 @@ export async function POST(request: Request) {
       reply,
       sources: devvratsQuestion ? [{ title: "Devvrats foundation reports", url: "/sources/foundation" }] : [],
     });
-  } catch {
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    console.warn("Anu Gemini request failed", { kind: errorName });
+    if (errorName === "TimeoutError") {
+      return json({ error: "Anu’s reply is taking longer than expected. Please try again in a moment." }, 504);
+    }
     return json({ error: "Anu couldn't reach her reply service. Please try again in a moment." }, 502);
   }
 }
