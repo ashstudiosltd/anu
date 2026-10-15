@@ -2,7 +2,7 @@ import { env } from "@/lib/anu/env";
 import { ANU_CONSTITUTION } from "@/lib/anu/constitution";
 import { DEVVRATS_FOUNDATION_KNOWLEDGE } from "@/lib/anu/knowledge";
 
-type BlogContext = { instruction: string; sources: Array<{ title: string; url: string }> };
+type BlogContext = { instruction: string; sources: Array<{ title: string; url: string }>; jsonReply?: boolean };
 
 type HistoryMessage = { role: "user" | "assistant"; text: string };
 
@@ -75,6 +75,7 @@ export async function replyToChat(request: Request, mode: "full" | "main-demo" |
         // Keep replies responsive for chat. Flash-Lite supports minimal
         // thinking, and Gemini 3.x uses thinkingLevel instead of temperature.
         generationConfig: {
+          ...(blogContext?.jsonReply ? { responseMimeType: "application/json" } : {}),
           thinkingConfig: { thinkingLevel: "minimal" },
           maxOutputTokens: demo ? 420 : 900,
         },
@@ -83,6 +84,7 @@ export async function replyToChat(request: Request, mode: "full" | "main-demo" |
     });
 
     if (!upstream.ok) {
+      console.warn("[anu-gemini] request rejected", { status: upstream.status });
       if (upstream.status === 429) return json({ error: "Anu is receiving too many requests right now. Please wait a moment and try again." }, 429);
       return json({ error: "Anu couldn't reach her reply service. Please try again in a moment." }, 502);
     }

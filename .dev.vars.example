@@ -5,5 +5,6 @@ NEXT_PUBLIC_SUPABASE_URL=https://lozgsjyvoimblijxpllr.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_WWSKXBFV9qBj0k_pQKLBAg_CpruR0HJ
 DEVVRATS_AUTH_ORIGIN=http://localhost:3001
 # Generate a random value independently in each environment (at least 32 bytes).
-ANU_PREVIEW_SECRET=replace-with-a-long-random-secret
+ANU_PREVIEW_SECRET=ck,FOE28342
 SABHA_PUBLIC_URL=http://localhost:3000
+ANU_INTEGRATION_SECRET=QrhQgu2fsBZXHJLD46NJ6dajoIXDqOm7nHFiYGYnzqSTh53LW0xgYUpyD2jero7J
