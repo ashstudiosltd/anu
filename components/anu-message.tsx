@@ -11,7 +11,7 @@ export function AnuMessage({ text, fresh }: { text: string; fresh: boolean }) {
     if (!fresh) return children;
     return Children.map(children, (child) => {
       if (typeof child === "string") return child.split(/(\s+)/).map((token, index) =>
-        /\s/.test(token) ? token : <span key={index} className="reply-word" style={{ animationDelay: `${Math.min(wordIndex++ * 24, 1100)}ms` }}>{token}</span>);
+        /\s/.test(token) ? token : <span key={index} className="reply-word" style={{ animationDelay: `${Math.min(wordIndex++ * 18, 1400)}ms` }}>{token}</span>);
       if (isValidElement<{ children?: ReactNode }>(child) && typeof child.type === "string" && ["strong", "em", "a", "del"].includes(child.type)) {
         return cloneElement(child, {}, reveal(child.props.children));
       }

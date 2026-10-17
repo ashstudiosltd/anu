@@ -7,7 +7,6 @@ import { AnuMessage } from "./anu-message";
 import {
   ArrowUpRight,
   ArrowUp,
-  BookOpen,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
@@ -87,6 +86,15 @@ export function AnuChat() {
   const composerRef = useRef<HTMLDivElement>(null);
   const composerOrigin = useRef<DOMRect | null>(null);
   const composerAnimation = useRef<Animation | null>(null);
+  const [welcomeIndex, setWelcomeIndex] = useState(-1);
+  useEffect(() => {
+    if (messages.length || input.trim()) return;
+    const timer = window.setInterval(() => setWelcomeIndex((previous) => {
+      const choices = [0, 1, 2].filter((value) => value !== previous);
+      return choices[Math.floor(Math.random() * choices.length)];
+    }), 6000);
+    return () => window.clearInterval(timer);
+  }, [messages.length, input]);
   const [typing, setTyping] = useState(false);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -370,9 +378,7 @@ export function AnuChat() {
   const dotState: DotState = busy ? "thinking" : freshReply !== null ? "replying" : typing && input.trim() ? "listening" : "idle";
   const dotEnergy = dotState === "listening" ? Math.min(input.length / 240, 1) : 0;
   const visibleConversations = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
-  const lastConversation = conversations[0];
   const firstName = account?.user?.name.trim().split(/\s+/)[0] || "DEVVRAT";
-  const activeTitle = conversations.find((item) => item.id === activeConversationId)?.title;
 
   return (
     <main style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties} className={`anu-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${mobileNav ? "nav-is-open" : ""}`}>
@@ -428,19 +434,18 @@ export function AnuChat() {
             {messages.length === 0 ? (
               <div className="welcome-wrap">
                 <LivingDot state={dotState} energy={dotEnergy} className="welcome-dot" />
-                <h1>Namastey, {firstName}<span>.</span></h1>
-                {space === "devvrats" ? <p className="welcome-context">Let’s build within Devvrats.</p> : lastConversation ? <button className="resume-chat" onClick={() => openConversation(lastConversation)} disabled={busy}>Pick up where we left off <span>{lastConversation.title}</span><ArrowUpRight size={14} /></button> : null}
+                <h1 key={welcomeIndex} className={`dynamic-greeting ${input.trim() ? "greeting-paused" : ""}`}>
+                  {welcomeIndex === -1 ? <>Namastey, <span className="greeting-highlight">{firstName}</span>.</> : welcomeIndex === 0 ? <>What is <span className="greeting-highlight">Anu</span>?</> : welcomeIndex === 1 ? <>What is <span className="greeting-highlight">Pata</span>?</> : <><span className="greeting-highlight">{firstName}</span>, what are you building?<span className="greeting-help">Want any help?</span></>}
+                </h1>
+                {space === "devvrats" && <p className="welcome-context">A little help within Sabha.</p>}
               </div>
             ) : (
               <div className="thread-wrap" key={activeConversationId}>
-                <p className="thread-label"><span /> {activeTitle || "A conversation with Anu"}</p>
                 <div className="message-list" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions">
-                  {messages.map((message, index) => <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""}`} key={`${index}-${message.role}`}>
+                  {messages.map((message, index) => message.role === "user" ? null : <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""}`} key={`${index}-${message.role}`}>
                     {message.role === "assistant" && <LivingDot state={index === freshReply ? "replying" : "idle"} className="message-dot" />}
-                    <div className={`message-bubble ${message.role}`}>
-                      <span className="sr-only">{message.role === "user" ? "You: " : "Anu: "}</span>
+                    <div className={`message-bubble ${message.role}`} aria-label="Anu’s reply">
                       {message.role === "assistant" ? <AnuMessage text={message.text} fresh={index === freshReply} /> : <p>{message.text}</p>}
-                      {message.sources?.length ? <div className="source-list" aria-label="Sources">{message.sources.map((source) => <a key={source.url} href={source.url} className="source-link" target={source.url.startsWith("https://") ? "_blank" : undefined} rel="noreferrer"><BookOpen size={12} /> {source.title}<ArrowUpRight size={12} /></a>)}</div> : null}
                     </div>
                   </article>)}
                 </div>
@@ -450,15 +455,15 @@ export function AnuChat() {
           </div>
 
           <div className="composer-dock" ref={composerRef}>
-            {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining} preview messages available.`} <a href={account.loginUrl}>Sign in to continue with Devvrats</a></div>}
             <form className="composer" onSubmit={handleSubmit}>
               <div className="composer-add-wrap">
                 <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
                 {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
               </div>
-              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Devvrats…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={account?.user ? 4000 : 1000} />
+              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Sabha…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={account?.user ? 4000 : 1000} />
               {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
             </form>
+            {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining ?? 0} preview ${(account.remaining ?? 0) === 1 ? "message" : "messages"} available.`} Sign in with <Link href="/auth" prefetch={false} aria-label="Sign in with Devvrats">Devvrats</Link></div>}
             <div className="composer-footnote"><span>Anu can make mistakes. Verify what matters.</span></div>
           </div>
         </div>
@@ -473,9 +478,9 @@ export function AnuChat() {
       <dialog ref={devvratsRef} className="devvrats-dialog" aria-labelledby="devvrats-heading" onClose={() => setDevvratsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setDevvratsOpen(false); }}>
         <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>
         <div className={`space-switch dialog-space-switch ${devvratsOpen ? "space-devvrats" : "space-anu"}`} role="group" aria-label="Devvrats introduction"><button type="button" onClick={() => setDevvratsOpen(false)}>ANU<span>.</span></button><button type="button" aria-pressed="true">DEVVRATS<span>.</span></button></div>
-        <h2 id="devvrats-heading">Your place within Devvrats.</h2>
-        <p>Learn together. Build together. Find your next step with Anu and explore the ideas, people, and possibilities of Devvrats.</p>
-        <p className="devvrats-dialog-detail">Sign in with your Devvrats account to enter this space.</p>
+        <h2 id="devvrats-heading">Anu, within Sabha.</h2>
+        <p>Understand an article, explore a project, or work through a question with Anu.</p>
+        <p className="devvrats-dialog-detail">Sign in with Devvrats to continue. Connected Sabha records are available only where access is provided.</p>
         <Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link>
         <a className="devvrats-learn" href="https://www.devvrats.in/" target="_blank" rel="noreferrer">Discover Devvrats</a>
       </dialog>
