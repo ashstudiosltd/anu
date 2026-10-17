@@ -1,23 +1,25 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { AnuMessage } from "./anu-message";
 import {
   ArrowUpRight,
   ArrowUp,
   BookOpen,
-  ChevronDown,
-  Code2,
-  Compass,
-  Lightbulb,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+  Square,
   MessageCircle,
   Plus,
   Sun,
   Moon,
   ShieldCheck,
-  Trash2,
+  Users,
+  UserRound,
   X,
 } from "lucide-react";
 
@@ -69,15 +71,10 @@ function restoreHistory(raw: string | null): Conversation[] {
   }
 }
 
-const suggestions = [
-  { icon: Compass, label: "What is Devvrats?", prompt: "What is Devvrats, and how can I get involved?" },
-  { icon: Code2, label: "Explain a concept", prompt: "Help me understand a coding concept. Where should we start?" },
-  { icon: Lightbulb, label: "Plan a project", prompt: "Help me turn an idea into a small project plan." },
-  { icon: BookOpen, label: "Review my approach", prompt: "Can you help me review my approach to a coding problem?" },
-];
+type DotState = "idle" | "listening" | "thinking" | "replying";
 
-function LivingDot({ state = "idle", className = "" }: { state?: "idle" | "thinking" | "replying"; className?: string }) {
-  return <span className={`living-dot dot-${state} ${className}`} aria-hidden="true"><span className="dot-halo" /><span className="dot-body"><i /></span></span>;
+function LivingDot({ state = "idle", energy = 0, className = "" }: { state?: DotState; energy?: number; className?: string }) {
+  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><span className="dot-body" /></span>;
 }
 
 export function AnuChat() {
@@ -86,9 +83,62 @@ export function AnuChat() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [composerMenu, setComposerMenu] = useState(false);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const composerOrigin = useRef<DOMRect | null>(null);
+  const composerAnimation = useRef<Animation | null>(null);
+  const [typing, setTyping] = useState(false);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (typingTimer.current) clearTimeout(typingTimer.current); }, []);
+
+  function updateInput(value: string) {
+    setInput(value);
+    setTyping(Boolean(value.trim()));
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => setTyping(false), 850);
+  }
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(272);
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [space, setSpace] = useState<"anu" | "devvrats">("anu");
+  const [devvratsOpen, setDevvratsOpen] = useState(false);
+  const devvratsRef = useRef<HTMLDialogElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchDialogRef = useRef<HTMLDialogElement>(null);
+  const [clansOpen, setClansOpen] = useState(false);
+  const clansRef = useRef<HTMLDialogElement>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (devvratsOpen && !devvratsRef.current?.open) devvratsRef.current?.showModal();
+    if (!devvratsOpen && devvratsRef.current?.open) devvratsRef.current.close();
+  }, [devvratsOpen]);
+
+  useEffect(() => {
+    if (searchOpen) { searchDialogRef.current?.showModal(); searchRef.current?.focus(); }
+    else if (searchDialogRef.current?.open) searchDialogRef.current.close();
+  }, [searchOpen]);
+  useEffect(() => {
+    if (clansOpen) clansRef.current?.showModal();
+    else if (clansRef.current?.open) clansRef.current.close();
+  }, [clansOpen]);
+  useEffect(() => {
+    if (profileOpen) profileRef.current?.showModal();
+    else if (profileRef.current?.open) profileRef.current.close();
+  }, [profileOpen]);
+
+  function chooseSpace(next: "anu" | "devvrats") {
+    if (next === "devvrats" && !account?.user) { setDevvratsOpen(true); return; }
+    if (busy) return;
+    setSpace(next);
+    startNewChat();
+  }
   const [historyReady, setHistoryReady] = useState(false);
   const [freshReply, setFreshReply] = useState<number | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
@@ -191,6 +241,21 @@ export function AnuChat() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [mobileNav]);
 
+  useLayoutEffect(() => {
+    const origin = composerOrigin.current;
+    const node = composerRef.current;
+    composerOrigin.current = null;
+    if (!origin || !node || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const destination = node.getBoundingClientRect();
+    composerAnimation.current?.cancel();
+    composerAnimation.current = node.animate([
+      { transform: `translateY(${origin.top - destination.top}px)` },
+      { transform: "translateY(0)" },
+    ], { duration: 580, easing: "cubic-bezier(.22,.61,.36,1)" });
+  }, [messages.length]);
+
+  useEffect(() => () => composerAnimation.current?.cancel(), []);
+
   async function sendMessage(value = input) {
     const text = value.trim();
     if (!text || busyRef.current || !historyReady || !account) return;
@@ -204,6 +269,8 @@ export function AnuChat() {
     const conversationId = activeConversationId || crypto.randomUUID();
     if (!activeConversationId) setActiveConversationId(conversationId);
     const nextMessages: Message[] = [...messages, { role: "user", text }];
+    if (!messages.length) composerOrigin.current = composerRef.current?.getBoundingClientRect() || null;
+    setComposerMenu(false);
     setMessages(nextMessages);
     setConversations((current) => fitHistory([
       makeConversation(conversationId, nextMessages),
@@ -228,13 +295,14 @@ export function AnuChat() {
         headers: { "Content-Type": "application/json", "x-anu-account": account.user?.id || "guest" },
         body: JSON.stringify({
           message: text,
+          space,
           history: contextHistory,
         }),
       });
       if (response.status === 409) { window.location.reload(); return; }
       const data = (await response.json()) as { reply?: string; error?: string; sources?: Message["sources"]; loginRequired?: boolean };
       if (requestIdentity !== identityRef.current) return;
-      if (!account.user) setAccount((current) => current ? {...current, remaining: data.loginRequired ? 0 : Math.max(0, (current.remaining ?? 5)-1)} : current);
+      if (!account.user && (response.ok || data.loginRequired)) setAccount((current) => current ? {...current, remaining: data.loginRequired ? 0 : Math.max(0, (current.remaining ?? 5)-1)} : current);
       if (!response.ok) throw new Error(data.error || "Anu couldn't answer just now. Please try again.");
       const completedMessages: Message[] = [...nextMessages, { role: "assistant", text: data.reply || "I couldn't form a response. Try asking another way.", sources: data.sources }];
       setMessages(completedMessages);
@@ -299,34 +367,27 @@ export function AnuChat() {
     }
   }
 
-  function clearHistory() {
-    if (busy) return;
-    setConversations([]);
-    setActiveConversationId(null);
-    setMessages([]);
-    setNotice("");
-    setInput("");
-  }
-
-  const dotState = busy ? "thinking" : freshReply !== null ? "replying" : "idle";
+  const dotState: DotState = busy ? "thinking" : freshReply !== null ? "replying" : typing && input.trim() ? "listening" : "idle";
+  const dotEnergy = dotState === "listening" ? Math.min(input.length / 240, 1) : 0;
+  const visibleConversations = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
+  const lastConversation = conversations[0];
+  const firstName = account?.user?.name.trim().split(/\s+/)[0] || "DEVVRAT";
   const activeTitle = conversations.find((item) => item.id === activeConversationId)?.title;
 
   return (
-    <main className={`anu-shell ${mobileNav ? "nav-is-open" : ""}`}>
+    <main style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties} className={`anu-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${mobileNav ? "nav-is-open" : ""}`}>
       {mobileNav && <button aria-label="Close navigation" className="nav-scrim" onClick={() => setMobileNav(false)} />}
-      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Conversations">
+      <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Conversations" onClick={(event) => { if (sidebarCollapsed && !(event.target as HTMLElement).closest("button, a, input, [role=separator]")) setSidebarCollapsed(false); }}>
         <div className="brand-lockup">
           <LivingDot className="brand-dot" />
-          <a className="brand-word" href="/" aria-label="Anu home">anu<span>.</span></a>
-          <span className="brand-caption">WITHIN DEVVRATS</span>
+          <Link className="brand-word" href="/" aria-label="Anu home">anu<span>.</span></Link>
+          <div className="sidebar-tools"><button className="icon-button" aria-label="Search conversations" title="Search conversations" onClick={() => { setSearch(""); setSearchOpen(true); }}><Search size={17} /></button><button className="icon-button collapse-button" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => { if (window.matchMedia("(max-width: 780px)").matches) setMobileNav(false); else setSidebarCollapsed((value) => !value); }}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
           <button className="icon-button mobile-close" aria-label="Close menu" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
 
-        <button className="new-chat" onClick={startNewChat} disabled={busy || !historyReady}><Plus size={16} /> New conversation <span className="new-chat-mark">↗</span></button>
-        <div className="history-heading">
-          <p>THIS SESSION</p>
-          <button className="icon-button clear-history" onClick={clearHistory} disabled={busy || !conversations.length} aria-label="Clear all local conversations" title="Clear local history"><Trash2 size={14} /></button>
-        </div>
+        <button className="new-chat" title="New chat" aria-label="New chat" onClick={startNewChat} disabled={busy || !historyReady}><Plus size={16} /><span>New chat</span> <span className="new-chat-mark">↗</span></button>
+        <button className="side-link clans-link" title="Clans" aria-label="Clans" onClick={() => setClansOpen(true)}><Users size={18} /><span>Clans</span></button>
+        <div className="history-heading"><p>Recents</p></div>
         <div className="history-list">
           {conversations.length ? conversations.map((conversation) => (
             <div className={`history-item ${activeConversationId === conversation.id ? "history-item-active" : ""}`} key={conversation.id}>
@@ -335,23 +396,29 @@ export function AnuChat() {
               </button>
               <button className="icon-button history-delete" onClick={() => deleteConversation(conversation.id)} disabled={busy} aria-label={`Delete conversation: ${conversation.title}`} title="Delete conversation"><X size={13} /></button>
             </div>
-          )) : <div className="history-empty"><MessageCircle size={20} /><p>A little room for your thoughts.</p><span>Your conversations will appear here.</span></div>}
+          )) : null}
         </div>
 
         <div className="sidebar-bottom">
-          <a className="side-link" href="https://www.devvrats.in/" target="_blank" rel="noreferrer"><Compass size={16} /> Devvrats <ArrowUpRight size={13} /></a>
-          <a className="side-link" href="/sources/foundation"><BookOpen size={16} /> What Anu knows <ArrowUpRight size={13} /></a>
-          <button className="side-link" onClick={() => setPrivacyOpen(true)}><ShieldCheck size={16} /> Memory &amp; privacy <ChevronDown size={13} /></button>
-          <div className="session-label"><span /> Your browser session <span className="session-badge">LOCAL</span></div>
+          <a className="side-link" aria-label="Devvrats" title="Devvrats" href="https://www.devvrats.in/" target="_blank" rel="noreferrer"><span>Devvrats</span></a>
+          <a className="side-link" aria-label="What Anu knows" title="What Anu knows" href="/sources/foundation"><span>What Anu knows</span></a>
+          <button className="side-link" title="Memory & privacy" aria-label="Memory and privacy" onClick={() => setPrivacyOpen(true)}><span>Memory &amp; privacy</span></button>
+          <div className="sidebar-account">{account?.user ? <><button className="account-avatar" aria-label="Open profile" title="Profile" onClick={() => setProfileOpen(true)}><UserRound size={18} /></button><div><strong>{account.user.name}</strong></div><button className="icon-button" aria-label="Sign out" title="Sign out" onClick={() => void signOut()} disabled={busy}><ArrowUpRight size={16} /></button></> : <Link className="sidebar-sign-in" href={account?.loginUrl || "/auth"} title="Sign in"><UserRound size={19} /><span>Sign in</span><ArrowUpRight size={15} /></Link>}</div>
         </div>
+        <div className="sidebar-resize" role="separator" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin={64} aria-valuemax={400} aria-valuenow={sidebarCollapsed ? 64 : sidebarWidth} tabIndex={0}
+          onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); }}
+          onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const width = event.clientX - event.currentTarget.parentElement!.getBoundingClientRect().left; setSidebarCollapsed(width < 150); setSidebarWidth(Math.max(220, Math.min(400, width))); }}
+          onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+          onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); if (event.key === "ArrowLeft" && sidebarWidth <= 220) setSidebarCollapsed(true); else { setSidebarCollapsed(false); setSidebarWidth((width) => Math.max(220, Math.min(400, width + (event.key === "ArrowLeft" ? -20 : 20)))); } } }} />
       </aside>
 
       <section className="main-panel" aria-label="Chat with Anu">
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Open conversations" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}><Menu size={20} /></button>
-          <div className="topbar-identity"><LivingDot state={dotState} className="header-dot" /><span>Anu<small>{busy ? "Thinking it through" : "Your guide within Devvrats"}</small></span></div>
-          <div className="topbar-right">{account?.user ? <><span className="account-name" title={account.user.name}>{account.user.name}</span><button className="account-action" onClick={() => void signOut()} disabled={busy}>Sign out</button></> : <a className="account-action" href={account?.loginUrl || "/auth"}>Sign in</a>}<button className="icon-button theme-toggle" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Switch between light and dark theme" title="Switch light / dark theme"><Sun className="sun-icon" size={18} /><Moon className="moon-icon" size={18} /></button><button className="icon-button mobile-new" onClick={startNewChat} disabled={busy} aria-label="New conversation"><Plus size={20} /></button></div>
+          <div className={`space-switch space-${space}`} role="group" aria-label="Choose your space"><button aria-pressed={space === "anu"} onClick={() => chooseSpace("anu")} disabled={busy}>ANU<span>.</span></button><button aria-pressed={space === "devvrats"} onClick={() => chooseSpace("devvrats")} disabled={busy}>DEVVRATS<span>.</span></button></div>
+          <button className="icon-button theme-toggle topbar-theme" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Switch between light and dark theme" title="Switch light / dark theme"><Sun className="sun-icon" size={19} /><Moon className="moon-icon" size={19} /></button>
         </header>
+        {notice && <div className="notice topbar-notice" role="alert">{notice}</div>}
 
         <div className={`chat-stage ${messages.length ? "has-messages" : "is-welcome"}`}>
           <div className="conversation-scroll" ref={scrollRef} onScroll={(event) => {
@@ -360,13 +427,9 @@ export function AnuChat() {
           }}>
             {messages.length === 0 ? (
               <div className="welcome-wrap">
-                <LivingDot className="welcome-dot" />
-                <p className="welcome-eyebrow">A LITTLE CLARITY, TOGETHER</p>
-                <h1>{account?.user ? `Namastey, ${account.user.name.split(" ")[0]}` : "Where shall we begin"}<span>{account?.user ? "." : "?"}</span></h1>
-                <p className="welcome-subtitle">A question, a bug, an idea.<br />Let’s find your next step.</p>
-                <div className="suggestions" aria-label="Suggested prompts">
-                  {suggestions.map(({ icon: Icon, label, prompt }) => <button key={label} className="suggestion" onClick={() => void sendMessage(prompt)} disabled={busy || !historyReady}><Icon size={15} /><span>{label}</span><ArrowUpRight size={13} /></button>)}
-                </div>
+                <LivingDot state={dotState} energy={dotEnergy} className="welcome-dot" />
+                <h1>Namastey, {firstName}<span>.</span></h1>
+                {space === "devvrats" ? <p className="welcome-context">Let’s build within Devvrats.</p> : lastConversation ? <button className="resume-chat" onClick={() => openConversation(lastConversation)} disabled={busy}>Pick up where we left off <span>{lastConversation.title}</span><ArrowUpRight size={14} /></button> : null}
               </div>
             ) : (
               <div className="thread-wrap" key={activeConversationId}>
@@ -386,17 +449,36 @@ export function AnuChat() {
             )}
           </div>
 
-          <div className="composer-dock">
+          <div className="composer-dock" ref={composerRef}>
             {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining} preview messages available.`} <a href={account.loginUrl}>Sign in to continue with Devvrats</a></div>}
-            {notice && <div className="notice" role="alert">{notice}</div>}
             <form className="composer" onSubmit={handleSubmit}>
-              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={messages.length ? "Continue the conversation…" : "Ask Anu anything…"} value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={account?.user ? 4000 : 1000} />
-              <div className="composer-bottom"><span className="composer-hint"><span className={`composer-status ${busy ? "is-thinking" : ""}`} />{busy ? "Thinking it through…" : "A little help with your next step"}</span><button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || busy || !historyReady}>{busy ? <span className="tiny-spinner" /> : <ArrowUp size={18} />}</button></div>
+              <div className="composer-add-wrap">
+                <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
+                {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
+              </div>
+              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Devvrats…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={account?.user ? 4000 : 1000} />
+              {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
             </form>
-            <div className="composer-footnote"><span>Anu can make mistakes. <span className="footnote-extra">Verify what matters.</span></span><button onClick={() => setPrivacyOpen(true)}>Session memory <ShieldCheck size={11} /></button></div>
+            <div className="composer-footnote"><span>Anu can make mistakes. Verify what matters.</span></div>
           </div>
         </div>
       </section>
+      <dialog ref={searchDialogRef} className="chat-search-dialog" aria-label="Search Anu conversations" onClose={() => { setSearchOpen(false); setSearch(""); }} onClick={(event) => { if (event.target === event.currentTarget) setSearchOpen(false); }}>
+        <div className="chat-search-input"><Search size={20} /><input ref={searchRef} aria-label="Search conversation history" placeholder="Search…" value={search} onChange={(event) => setSearch(event.target.value)} /><button className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18} /></button></div>
+        <p className="search-heading">{search.trim() ? "Search results" : "Recent chats"}</p>
+        <div className="search-results">{visibleConversations.map((conversation) => <button className="search-result" key={conversation.id} disabled={busy} onClick={() => { openConversation(conversation); setSearchOpen(false); }}><MessageCircle size={18} /><span><strong>{conversation.title}</strong>{search.trim() && <small>{conversation.messages.find((message) => message.text.toLowerCase().includes(search.toLowerCase().trim()))?.text.slice(0, 140)}</small>}</span><ArrowUpRight size={15} /></button>)}{!visibleConversations.length && <p className="search-empty">{search.trim() ? "No conversations match your search." : "No conversations yet."}</p>}</div>
+      </dialog>
+      <dialog ref={clansRef} className="privacy-dialog" aria-labelledby="clans-heading" onClose={() => setClansOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setClansOpen(false); }}><div className="dialog-heading"><Users size={23} /><button className="icon-button" aria-label="Close clans" onClick={() => setClansOpen(false)}><X size={18} /></button></div><h2 id="clans-heading">Clans</h2><p>Clans aren’t connected to Anu yet. This space will hold your groups when they’re available.</p></dialog>
+      <dialog ref={profileRef} className="privacy-dialog" aria-labelledby="profile-heading" onClose={() => setProfileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setProfileOpen(false); }}><div className="dialog-heading"><UserRound size={23} /><button className="icon-button" aria-label="Close profile" onClick={() => setProfileOpen(false)}><X size={18} /></button></div><h2 id="profile-heading">{account?.user?.name || "DEVVRAT"}</h2><p>{account?.user ? "You’re signed in with Devvrats. Personal details and personalization will be added here next." : "Sign in with Devvrats to use your member profile."}</p>{!account?.user && <Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link>}</dialog>
+      <dialog ref={devvratsRef} className="devvrats-dialog" aria-labelledby="devvrats-heading" onClose={() => setDevvratsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setDevvratsOpen(false); }}>
+        <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>
+        <div className={`space-switch dialog-space-switch ${devvratsOpen ? "space-devvrats" : "space-anu"}`} role="group" aria-label="Devvrats introduction"><button type="button" onClick={() => setDevvratsOpen(false)}>ANU<span>.</span></button><button type="button" aria-pressed="true">DEVVRATS<span>.</span></button></div>
+        <h2 id="devvrats-heading">Your place within Devvrats.</h2>
+        <p>Learn together. Build together. Find your next step with Anu and explore the ideas, people, and possibilities of Devvrats.</p>
+        <p className="devvrats-dialog-detail">Sign in with your Devvrats account to enter this space.</p>
+        <Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link>
+        <a className="devvrats-learn" href="https://www.devvrats.in/" target="_blank" rel="noreferrer">Discover Devvrats</a>
+      </dialog>
       <dialog ref={privacyRef} className="privacy-dialog" onClose={() => setPrivacyOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setPrivacyOpen(false); }}>
         <div className="dialog-heading"><ShieldCheck size={20} /><button className="icon-button" aria-label="Close privacy information" onClick={() => setPrivacyOpen(false)}><X size={19} /></button></div>
         <h2>A little context on memory.</h2>

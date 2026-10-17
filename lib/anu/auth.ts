@@ -18,6 +18,9 @@ export async function authClient() {
 }
 
 export async function memberIdentity() {
+  // Local guest previews do not require a shared account project.
+  // Configured account verification and production always fail closed.
+  if (process.env.NODE_ENV === "development" && !env.NEXT_PUBLIC_SUPABASE_URL && !env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) return null;
   const client = await authClient();
   const { data: { user }, error } = await client.auth.getUser();
   if (error && error.name !== "AuthSessionMissingError") throw new Error("Account verification unavailable");
