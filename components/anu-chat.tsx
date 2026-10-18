@@ -442,9 +442,9 @@ export function AnuChat() {
             ) : (
               <div className="thread-wrap" key={activeConversationId}>
                 <div className="message-list" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions">
-                  {messages.map((message, index) => message.role === "user" ? null : <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""}`} key={`${index}-${message.role}`}>
+                  {messages.map((message, index) => <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""}`} key={`${index}-${message.role}`}>
                     {message.role === "assistant" && <LivingDot state={index === freshReply ? "replying" : "idle"} className="message-dot" />}
-                    <div className={`message-bubble ${message.role}`} aria-label="Anu’s reply">
+                    <div className={`message-bubble ${message.role}`} aria-label={message.role === "user" ? "Your message" : "Anu’s reply"}>
                       {message.role === "assistant" ? <AnuMessage text={message.text} fresh={index === freshReply} /> : <p>{message.text}</p>}
                     </div>
                   </article>)}

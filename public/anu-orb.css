@@ -11,3 +11,4 @@
 @keyframes dot-think { 0%, 100% { opacity: .55; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 @keyframes dot-reply { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.2); } }
 @media (prefers-reduced-motion: reduce) { .living-dot .dot-body { animation: none; transition: none; } }
+x
