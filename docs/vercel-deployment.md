@@ -61,3 +61,13 @@ After domain and production Main deployment are ready, complete a real Google/Gi
 This release keeps history in browser-tab session storage, scoped by member or guest; it does not persist chat history in Supabase. Guest preview has five attempts per signed browser cookie over 24 hours; clearing cookies resets it. Integration routes require a shared server secret, but current request budgets are per-instance and reset across serverless invocations. Configure Vercel Firewall rate limits for chat/auth/integration paths before inviting broad public traffic; durable per-account usage quotas remain future work. Do not describe the preview cookie as an abuse-proof usage limit.
 
 Rollback: in Vercel promote the previous healthy deployment. Keep production secret values stable across redeploys. DNS stays on the same Anu project. Revert Main/Sabha integration configuration together if rolling back the shared secret protocol.
+
+## Installable Anu app
+
+The PWA uses `/manifest.webmanifest`, branded 192/512/maskable icons, an Apple touch icon, and a standalone window. Chromium offers Install Anu in the sidebar when its install prompt is available. On iPhone/iPad the sidebar opens instructions for Safari → Share → Add to Home Screen. Browser support and install eligibility determine which controls appear.
+
+Production builds generate `/sw.js` from `lib/pwa/worker.js`; its release identifier hashes the worker and offline page. The worker URL is never HTTP-cached. The worker only stores the public offline document. Chat, authentication, RSC responses, assets, member data, and conversation history are not cached by the worker. Navigation uses the network first; failed navigation shows a reconnect screen. Chat requires an internet connection.
+
+Each Vercel production deployment from `main` serves the latest app on reopening. No forced reload interrupts an open conversation. A newly installed worker waits for older controlled windows to close before activation; reopening while another old window remains open can delay worker activation, but page navigation still fetches fresh app content. Returning to a visible app checks for worker updates without discarding a draft.
+
+Checks: `node scripts/check-pwa.mjs`, `npm run lint`, and `npm run build`. Verify manifest, icon URLs, service-worker headers, installation on an actual phone, offline launch, and reopening after a later deployment. Phone installation and hosting-side production branch configuration require live device/dashboard checks.

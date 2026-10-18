@@ -10,7 +10,8 @@ node_modules
 outputs
 examples
 build
-scripts
+scripts/*
+!scripts/build-pwa.mjs
 vite.config.ts
 cloudflare-env.d.ts
 db

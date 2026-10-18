@@ -3,6 +3,7 @@
 import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
+import { AnuPwa } from "./anu-pwa";
 import { AnuMessage } from "./anu-message";
 import {
   ArrowUpRight,
@@ -406,6 +407,7 @@ export function AnuChat() {
         </div>
 
         <div className="sidebar-bottom">
+          <AnuPwa />
           <a className="side-link" aria-label="Devvrats" title="Devvrats" href="https://www.devvrats.in/" target="_blank" rel="noreferrer"><span>Devvrats</span></a>
           <a className="side-link" aria-label="What Anu knows" title="What Anu knows" href="/sources/foundation"><span>What Anu knows</span></a>
           <button className="side-link" title="Memory & privacy" aria-label="Memory and privacy" onClick={() => setPrivacyOpen(true)}><span>Memory &amp; privacy</span></button>

@@ -629,3 +629,8 @@ html[data-theme="light"] .guest-access a { color: #7450ac; }
   .welcome-dot { margin-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .dynamic-greeting { animation: none; } }
+
+/* Installed app safe areas preserve the same layout around notches and home bars. */
+.topbar { padding-top: env(safe-area-inset-top); min-height: calc(64px + env(safe-area-inset-top)); }
+.sidebar { padding-top: max(18px, env(safe-area-inset-top)); padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+@media (display-mode: standalone) { .topbar { flex-basis: calc(64px + env(safe-area-inset-top)); } }

@@ -1,5 +1,5 @@
 import { Roboto } from "next/font/google";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AnuThemeProvider } from "@/components/anu-theme-provider";
 
@@ -33,10 +33,24 @@ export const metadata: Metadata = {
     description: shareDescription,
     images: [{ url: "/social/anu-share.png", alt: "Anu — Your AI companion within Devvrats" }],
   },
+  applicationName: "Anu",
+  appleWebApp: { capable: true, title: "Anu", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
   icons: {
+    apple: [{ url: "/icons/anu-apple-180.png", sizes: "180x180", type: "image/png" }],
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#101012" },
+  ],
 };
 
 export default function RootLayout({
