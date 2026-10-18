@@ -24,14 +24,14 @@ import {
 } from "lucide-react";
 
 type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }> };
-type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] };
+type Conversation = { id: string; title: string; updatedAt: number; messages: Message[]; space?: "anu" | "devvrats"; revision?: number; loaded?: boolean };
 const HISTORY_KEY = "anu-session-conversations-v2";
 type AccountSession = { user: { id: string; name: string } | null; remaining: number | null; loginUrl: string };
 const MAX_CONVERSATIONS = 20;
 const MAX_STORED_CHARACTERS = 350_000;
 
 function fitHistory(items: Conversation[]) {
-  let result = items.slice(0, MAX_CONVERSATIONS).map((item) => ({ ...item, messages: item.messages.slice(-60) }));
+  let result = items.filter((item) => item.updatedAt > Date.now() - 45 * 86400000).slice(0, MAX_CONVERSATIONS).map((item) => ({ ...item, messages: item.messages.slice(-60) }));
   while (JSON.stringify(result).length > MAX_STORED_CHARACTERS) {
     if (result.length > 1) result = result.slice(0, -1);
     else if (result[0]?.messages.length && result[0].messages.length > 1) result = [{ ...result[0], messages: result[0].messages.slice(-Math.ceil(result[0].messages.length / 2)) }];
@@ -40,10 +40,13 @@ function fitHistory(items: Conversation[]) {
   return result;
 }
 
-function makeConversation(id: string, messages: Message[]): Conversation {
+function makeConversation(id: string, messages: Message[], space: "anu" | "devvrats", revision = 0): Conversation {
   const firstUserMessage = messages.find((message) => message.role === "user")?.text || "Conversation with Anu";
   return {
     id,
+    space,
+    revision,
+    loaded: true,
     title: firstUserMessage.replace(/\s+/g, " ").slice(0, 46),
     updatedAt: Date.now(),
     messages,
@@ -113,6 +116,7 @@ export function AnuChat() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(272);
   const [search, setSearch] = useState("");
+  const [searchMatches, setSearchMatches] = useState<Conversation[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [space, setSpace] = useState<"anu" | "devvrats">("anu");
   const [devvratsOpen, setDevvratsOpen] = useState(false);
@@ -145,6 +149,10 @@ export function AnuChat() {
   function chooseSpace(next: "anu" | "devvrats") {
     if (next === "devvrats" && !account?.user) { setDevvratsOpen(true); return; }
     if (busy) return;
+    if (next === space) { startNewChat(); return; }
+    setHistoryReady(false);
+    setSearchOpen(false);
+    setSearchMatches(null);
     setSpace(next);
     startNewChat();
   }
@@ -172,21 +180,42 @@ export function AnuChat() {
         if (!response.ok) throw new Error("Accounts are temporarily unavailable. Please refresh to try again.");
         const next = await response.json() as AccountSession;
         if (!active) return;
-        const identity = next.user?.id || "guest";
+        const owner = next.user?.id || "guest";
+        const identity = `${owner}:${space}`;
         if (identityRef.current !== identity) {
           requestRef.current?.abort();
           setHistoryReady(false);
+          setConversations([]);
+          setMessages([]);
+          setActiveConversationId(null);
           const key = `${HISTORY_KEY}:${identity}`;
           let restored: Conversation[] = [];
-          try { restored = restoreHistory(sessionStorage.getItem(key)); } catch { /* Storage can be disabled. */ }
+          try {
+            restored = restoreHistory(sessionStorage.getItem(key));
+            if (!restored.length && space === "anu") restored = restoreHistory(sessionStorage.getItem(`${HISTORY_KEY}:${owner}`));
+          } catch { /* Storage can be disabled. */ }
+          let syncNotice = "";
+          if (next.user) {
+            try {
+              const historyResponse = await fetch(`/api/history?space=${space}`, { cache: "no-store" });
+              const data = await historyResponse.json() as { error?: string; conversations: Conversation[] };
+              if (!historyResponse.ok) throw new Error(data.error || "Chat sync is unavailable. Your history stays in this tab.");
+              const remote = data.conversations as Conversation[];
+              restored = fitHistory([
+                ...remote.map((item) => { const local = restored.find((cached) => cached.id === item.id && cached.revision === item.revision && cached.loaded !== false); return local ? { ...item, messages: local.messages, loaded: true } : item; }),
+                ...restored.filter((item) => !item.revision && !remote.some((row) => row.id === item.id)),
+              ].sort((a, b) => b.updatedAt - a.updatedAt));
+            } catch (error) { syncNotice = error instanceof Error ? error.message : "Chat sync is unavailable."; }
+          }
+          if (!active) return;
           historyKey.current = key;
           identityRef.current = identity;
           setConversations(restored);
-          setActiveConversationId(restored[0]?.id || null);
-          setMessages(restored[0]?.messages || []);
+          setActiveConversationId(null);
+          setMessages([]);
           setInput("");
           setFreshReply(null);
-          setNotice("");
+          setNotice(syncNotice);
           setHistoryReady(true);
         }
         setAccount(next);
@@ -198,19 +227,36 @@ export function AnuChat() {
     window.addEventListener("focus", refreshAccount);
     const timer = window.setInterval(refreshAccount, 60_000);
     return () => { active = false; clearInterval(timer); window.removeEventListener("focus", refreshAccount); requestRef.current?.abort(); };
-  }, []);
+  }, [space]);
 
   useEffect(() => {
     if (!historyReady || !historyKey.current) return;
     try { sessionStorage.setItem(historyKey.current, JSON.stringify(fitHistory(conversations))); } catch { /* Chat still works without storage. */ }
   }, [conversations, historyReady]);
 
+  useEffect(() => {
+    if (!searchOpen || !search.trim() || !account?.user) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/history?space=${space}&q=${encodeURIComponent(search.trim().slice(0, 200))}`, { cache: "no-store", signal: controller.signal });
+        const data = await response.json() as { conversations: Conversation[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not search synced chats.");
+        if (!controller.signal.aborted) setSearchMatches(data.conversations);
+      } catch (error) { if (!controller.signal.aborted) setNotice(error instanceof Error ? error.message : "Could not search synced chats."); }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [search, searchOpen, account?.user, space]);
+
   async function signOut() {
     if (busy) return;
     try {
       const response = await fetch("/api/auth/session", { method: "DELETE" });
       if (!response.ok) throw new Error("Could not sign out. Please try again.");
-      if (historyKey.current) sessionStorage.removeItem(historyKey.current);
+      try {
+        if (historyKey.current) sessionStorage.removeItem(historyKey.current);
+        if (account?.user) for (const suffix of [account.user.id, `${account.user.id}:anu`, `${account.user.id}:devvrats`]) sessionStorage.removeItem(`${HISTORY_KEY}:${suffix}`);
+      } catch { /* Signing out still succeeds if browser storage is unavailable. */ }
       window.location.reload();
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not sign out."); }
   }
@@ -282,7 +328,7 @@ export function AnuChat() {
     setComposerMenu(false);
     setMessages(nextMessages);
     setConversations((current) => fitHistory([
-      makeConversation(conversationId, nextMessages),
+      makeConversation(conversationId, nextMessages, space, conversations.find((item) => item.id === conversationId)?.revision || 0),
       ...current.filter((item) => item.id !== conversationId),
     ]));
     setInput("");
@@ -317,9 +363,21 @@ export function AnuChat() {
       setMessages(completedMessages);
       setFreshReply(completedMessages.length - 1);
       setConversations((current) => fitHistory([
-        makeConversation(conversationId, completedMessages),
+        makeConversation(conversationId, completedMessages, space, conversations.find((item) => item.id === conversationId)?.revision || 0),
         ...current.filter((item) => item.id !== conversationId),
       ]));
+      if (account.user) {
+        const saved = makeConversation(conversationId, completedMessages, space, conversations.find((item) => item.id === conversationId)?.revision || 0);
+        try {
+          const sync = await fetch("/api/history", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, messages: saved.messages.slice(-60).map(({ role, text }) => ({ role, text })) }), signal: controller.signal });
+          const result = await sync.json() as { error?: string; revision: number; updatedAt: number };
+          if (!sync.ok) throw new Error(result.error || "Chat sync is unavailable. This reply is saved in this tab.");
+          if (identityRef.current !== requestIdentity) return;
+          setConversations((current) => current.map((item) => item.id === conversationId ? { ...item, revision: result.revision, updatedAt: result.updatedAt } : item));
+        } catch (error) {
+          if (!controller.signal.aborted && identityRef.current === requestIdentity) setNotice(error instanceof Error ? error.message : "Chat sync is unavailable. This reply is saved in this tab.");
+        }
+      }
     } catch (error) {
       if (controller.signal.aborted) return;
       const reason = error instanceof Error ? error.message : "Anu couldn't answer just now. Please try again.";
@@ -352,8 +410,21 @@ export function AnuChat() {
     setMobileNav(false);
   }
 
-  function openConversation(conversation: Conversation) {
-    if (busy) return;
+  async function openConversation(conversation: Conversation) {
+    if (busyRef.current) return;
+    const identity = identityRef.current;
+    if (account?.user && conversation.revision) {
+      busyRef.current = true; setBusy(true);
+      try {
+        const response = await fetch(`/api/history?space=${space}&id=${conversation.id}`, { cache: "no-store" });
+        const data = await response.json() as { error?: string; conversation: Conversation };
+        if (!response.ok) throw new Error(data.error || "Could not load this chat.");
+        if (identity !== identityRef.current) return;
+        conversation = { ...data.conversation, loaded: true };
+        setConversations((current) => current.map((item) => item.id === conversation.id ? conversation : item));
+      } catch (error) { setNotice(error instanceof Error ? error.message : "Could not load this chat."); return; }
+      finally { busyRef.current = false; setBusy(false); }
+    }
     setActiveConversationId(conversation.id);
     setMessages(conversation.messages);
     setFreshReply(null);
@@ -363,14 +434,21 @@ export function AnuChat() {
     setMobileNav(false);
   }
 
-  function deleteConversation(id: string) {
-    if (busy) return;
+  async function deleteConversation(id: string) {
+    if (busyRef.current) return;
+    if (account?.user) {
+      busyRef.current = true; setBusy(true);
+      try {
+        const response = await fetch(`/api/history?space=${space}&id=${id}`, { method: "DELETE" });
+        if (!response.ok) { const data = await response.json() as { error?: string }; throw new Error(data.error || "Could not delete this chat."); }
+      } catch (error) { setNotice(error instanceof Error ? error.message : "Could not delete this chat."); return; }
+      finally { busyRef.current = false; setBusy(false); }
+    }
     const remaining = conversations.filter((conversation) => conversation.id !== id);
     setConversations(remaining);
     if (activeConversationId === id) {
-      const next = remaining[0];
-      setActiveConversationId(next?.id || null);
-      setMessages(next?.messages || []);
+      setActiveConversationId(null);
+      setMessages([]);
       setNotice("");
       setInput("");
     }
@@ -378,7 +456,8 @@ export function AnuChat() {
 
   const dotState: DotState = busy ? "thinking" : freshReply !== null ? "replying" : typing && input.trim() ? "listening" : "idle";
   const dotEnergy = dotState === "listening" ? Math.min(input.length / 240, 1) : 0;
-  const visibleConversations = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
+  const localMatches = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
+  const visibleConversations = searchOpen && search.trim() && account?.user && searchMatches ? [...searchMatches, ...localMatches.filter((item) => !searchMatches.some((match) => match.id === item.id))].slice(0, 20) : localMatches;
   const firstName = account?.user?.name.trim().split(/\s+/)[0] || "DEVVRAT";
 
   return (
@@ -388,7 +467,7 @@ export function AnuChat() {
         <div className="brand-lockup">
           <LivingDot className="brand-dot" />
           <Link className="brand-word" href="/" aria-label="Anu home">anu<span>.</span></Link>
-          <div className="sidebar-tools"><button className="icon-button" aria-label="Search conversations" title="Search conversations" onClick={() => { setSearch(""); setSearchOpen(true); }}><Search size={17} /></button><button className="icon-button collapse-button" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => { if (window.matchMedia("(max-width: 780px)").matches) setMobileNav(false); else setSidebarCollapsed((value) => !value); }}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
+          <div className="sidebar-tools"><button className="icon-button" aria-label="Search conversations" title="Search conversations" onClick={() => { setSearch(""); setSearchMatches(null); setSearchOpen(true); }}><Search size={17} /></button><button className="icon-button collapse-button" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => { if (window.matchMedia("(max-width: 780px)").matches) setMobileNav(false); else setSidebarCollapsed((value) => !value); }}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
           <button className="icon-button mobile-close" aria-label="Close menu" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
 
@@ -471,7 +550,7 @@ export function AnuChat() {
         </div>
       </section>
       <dialog ref={searchDialogRef} className="chat-search-dialog" aria-label="Search Anu conversations" onClose={() => { setSearchOpen(false); setSearch(""); }} onClick={(event) => { if (event.target === event.currentTarget) setSearchOpen(false); }}>
-        <div className="chat-search-input"><Search size={20} /><input ref={searchRef} aria-label="Search conversation history" placeholder="Search…" value={search} onChange={(event) => setSearch(event.target.value)} /><button className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18} /></button></div>
+        <div className="chat-search-input"><Search size={20} /><input ref={searchRef} aria-label="Search conversation history" placeholder="Search…" value={search} onChange={(event) => { setSearchMatches(null); setSearch(event.target.value); }} /><button className="icon-button" aria-label="Close search" onClick={() => setSearchOpen(false)}><X size={18} /></button></div>
         <p className="search-heading">{search.trim() ? "Search results" : "Recent chats"}</p>
         <div className="search-results">{visibleConversations.map((conversation) => <button className="search-result" key={conversation.id} disabled={busy} onClick={() => { openConversation(conversation); setSearchOpen(false); }}><MessageCircle size={18} /><span><strong>{conversation.title}</strong>{search.trim() && <small>{conversation.messages.find((message) => message.text.toLowerCase().includes(search.toLowerCase().trim()))?.text.slice(0, 140)}</small>}</span><ArrowUpRight size={15} /></button>)}{!visibleConversations.length && <p className="search-empty">{search.trim() ? "No conversations match your search." : "No conversations yet."}</p>}</div>
       </dialog>
@@ -488,12 +567,12 @@ export function AnuChat() {
       </dialog>
       <dialog ref={privacyRef} className="privacy-dialog" onClose={() => setPrivacyOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setPrivacyOpen(false); }}>
         <div className="dialog-heading"><ShieldCheck size={20} /><button className="icon-button" aria-label="Close privacy information" onClick={() => setPrivacyOpen(false)}><X size={19} /></button></div>
-        <h2>A little context on memory.</h2>
-        <p>Conversations stay in this browser tab’s session. You can reopen them, delete one, or clear them all from the sidebar. A new conversation starts fresh.</p>
-        <p>History is limited to the most recent 20 conversations and 60 messages per conversation, with an overall storage limit. Anu receives recent messages that fit within her context limit when you continue a conversation.</p>
-        <p>Clearing history removes the local copy. It does not delete content already sent to Google. With the Gemini API free tier, submitted content and replies may be used to improve Google products and reviewed by people. Keep sensitive details out of chat.</p>
+        <h2>Your chats, your space.</h2>
+        <p>ANU and DEVVRATS have separate histories. Signed-in chats sync to your account when chat sync is connected. Guest chats stay in this browser tab.</p>
+        <p>We retain up to 20 chats per space. Chats expire after 45 days without a new saved reply. A daily cleanup removes expired records. Each saved chat keeps recent text within 60 messages and a compact storage limit; older messages may be dropped from long chats.</p>
+        <p>You can delete a chat from the sidebar. Deletion removes its synced record and this tab’s local copy. Deleting chats does not erase content already sent to Google. Keep sensitive information out of chat.</p>
         <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">Google’s Gemini API terms <ArrowUpRight size={13} /></a>
-        <p className="dialog-note">History is stored separately for each account in this browser tab. Signing out removes this account’s local history from this tab. Chats do not yet sync across devices. Anu receives your verified display name when you are signed in.</p>
+        <p className="dialog-note">Signing out removes this account’s local cache from this tab. Synced chats remain until deleted or expired. Anu receives your verified display name and the selected conversation’s recent messages, not your entire history.</p>
       </dialog>
     </main>
   );
