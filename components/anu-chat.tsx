@@ -22,6 +22,7 @@ import {
   Users,
   UserRound,
   X,
+  ChevronDown,
 } from "lucide-react";
 
 type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }>; action?: ActionPreview };
@@ -80,7 +81,7 @@ function restoreHistory(raw: string | null): Conversation[] {
 type DotState = "idle" | "listening" | "thinking" | "replying";
 
 function LivingDot({ state = "idle", energy = 0, className = "" }: { state?: DotState; energy?: number; className?: string }) {
-  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><span className="dot-body" /></span>;
+  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><span className="dot-body"><span className="dot-eyes"><span /><span /></span></span></span>;
 }
 
 export function AnuChat() {
@@ -91,18 +92,19 @@ export function AnuChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [composerMenu, setComposerMenu] = useState(false);
+  const [sidebarModeOpen, setSidebarModeOpen] = useState(false);
   const composerRef = useRef<HTMLDivElement>(null);
   const composerOrigin = useRef<DOMRect | null>(null);
   const composerAnimation = useRef<Animation | null>(null);
   const [welcomeIndex, setWelcomeIndex] = useState(-1);
   useEffect(() => {
-    if (messages.length || input.trim()) return;
+    if (messages.length) return;
     const timer = window.setInterval(() => setWelcomeIndex((previous) => {
       const choices = [0, 1, 2].filter((value) => value !== previous);
       return choices[Math.floor(Math.random() * choices.length)];
     }), 6000);
     return () => window.clearInterval(timer);
-  }, [messages.length, input]);
+  }, [messages.length]);
   function updateInput(value: string) {
     setInput(value);
   }
@@ -198,7 +200,7 @@ export function AnuChat() {
   function chooseSpace(next: "anu" | "devvrats") {
     if (next === "devvrats" && !account?.user) { setDevvratsOpen(true); return; }
     if (busy) return;
-    if (next === space) { startNewChat(); return; }
+    if (next === space) return;
     setHistoryReady(false);
     setSearchOpen(false);
     setSearchMatches(null);
@@ -516,8 +518,14 @@ export function AnuChat() {
       {mobileNav && <button aria-label="Close navigation" className="nav-scrim" onClick={() => setMobileNav(false)} />}
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`} aria-label="Conversations" onClick={(event) => { if (sidebarCollapsed && !(event.target as HTMLElement).closest("button, a, input, [role=separator]")) setSidebarCollapsed(false); }}>
         <div className="brand-lockup">
-          <LivingDot className="brand-dot" />
-          <Link className="brand-word" href="/" aria-label="Anu home">anu<span>.</span></Link>
+          <div className="brand-mode-wrap">
+            <button className="brand-mode-toggle" aria-haspopup="menu" aria-expanded={sidebarModeOpen} aria-label={`Switch chat mode. Current mode: ${space === "anu" ? "Anu" : "Devvrats"}`} onClick={() => setSidebarModeOpen((open) => !open)}>
+              <LivingDot className="brand-dot" />
+              <span className="brand-word">anu<span>.</span></span>
+              <ChevronDown className="brand-mode-chevron" size={15} />
+            </button>
+            {sidebarModeOpen && <><button className="mode-menu-dismiss" aria-label="Close mode menu" onClick={() => setSidebarModeOpen(false)} /><div className="mode-menu sidebar-mode-menu" role="menu" aria-label="Choose Anu mode"><button type="button" role="menuitemradio" aria-checked={space === "anu"} onClick={() => { if (space !== "anu") chooseSpace("anu"); setSidebarModeOpen(false); }}><span className="mode-option-logo logo-anu" aria-hidden="true" /><span className="mode-option-copy"><strong>Anu</strong><small>Your guide within Devvrats</small></span>{space === "anu" && <span className="mode-check">✓</span>}</button><button type="button" role="menuitemradio" aria-checked={space === "devvrats"} onClick={() => { if (space !== "devvrats") chooseSpace("devvrats"); setSidebarModeOpen(false); }}><span className="mode-option-logo logo-devvrats" aria-hidden="true" /><span className="mode-option-copy"><strong>Devvrats</strong><small>Explore Sabha with Anu</small></span>{space === "devvrats" && <span className="mode-check">✓</span>}</button></div></>}
+          </div>
           <div className="sidebar-tools"><button className="icon-button" aria-label="Search conversations" title="Search conversations" onClick={() => { setSearch(""); setSearchMatches(null); setSearchOpen(true); }}><Search size={17} /></button><button className="icon-button collapse-button" aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={() => { if (window.matchMedia("(max-width: 780px)").matches) setMobileNav(false); else setSidebarCollapsed((value) => !value); }}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button></div>
           <button className="icon-button mobile-close" aria-label="Close menu" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
@@ -553,7 +561,6 @@ export function AnuChat() {
       <section className="main-panel" aria-label="Chat with Anu">
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Open conversations" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}><Menu size={20} /></button>
-          <div className={`space-switch space-${space}`} role="group" aria-label="Choose your space"><button aria-pressed={space === "anu"} onClick={() => chooseSpace("anu")} disabled={busy}>ANU<span>.</span></button><button aria-pressed={space === "devvrats"} onClick={() => chooseSpace("devvrats")} disabled={busy}>DEVVRATS<span>.</span></button></div>
           <button className="icon-button theme-toggle topbar-theme" onClick={() => void changeTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Switch between light and dark theme" title="Switch light / dark theme"><Sun className="sun-icon" size={19} /><Moon className="moon-icon" size={19} /></button>
         </header>
         {notice && <div className="notice topbar-notice" role="alert">{notice}</div>}
@@ -565,10 +572,9 @@ export function AnuChat() {
           }}>
             {messages.length === 0 ? (
               <div className="welcome-wrap">
-                <h1 key={welcomeIndex} className={`dynamic-greeting ${input.trim() ? "greeting-paused" : ""}`}>
-                  {welcomeIndex === -1 ? <>Namastey, <span className="greeting-highlight">{firstName}</span>.</> : welcomeIndex === 0 ? <>What is <span className="greeting-highlight">Anu</span>?</> : welcomeIndex === 1 ? <>What is <span className="greeting-highlight">Pata</span>?</> : <><span className="greeting-highlight">{firstName}</span>, what are you building?<span className="greeting-help">Want any help?</span></>}
+                <h1 key={welcomeIndex} className="dynamic-greeting">
+                  {welcomeIndex === -1 ? <>Namastey, <span className="greeting-highlight">{firstName}</span>.</> : welcomeIndex === 0 ? <>What is <span className="greeting-highlight">Anu</span>?</> : welcomeIndex === 1 ? <>What is <span className="greeting-highlight">Pata</span>?</> : <><span className="greeting-highlight">{firstName}</span>, what are you building?</>}
                 </h1>
-                {space === "devvrats" && <p className="welcome-context">A little help within Sabha.</p>}
               </div>
             ) : (
               <div className="thread-wrap" key={activeConversationId}>
@@ -589,12 +595,17 @@ export function AnuChat() {
 
           <div className="composer-dock" ref={composerRef}>
             <form className="composer" onSubmit={handleSubmit}>
-              <div className="composer-add-wrap">
-                <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
-                {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
+              <div className="composer-meta">
+                {space === "anu" ? <LivingDot className="composer-living-dot" state={busy ? "replying" : input.trim() ? "listening" : "idle"} energy={Math.min(input.trim().length / 80, 1)} /> : <span className={`composer-active-logo logo-devvrats ${busy ? "brand-replying" : input.trim() ? "brand-listening" : ""}`} aria-hidden="true" />}
               </div>
-              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Sabha…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={space === "devvrats" ? 2000 : account?.user ? 4000 : 1000} />
-              {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
+              <div className="composer-input-shell">
+                <div className="composer-add-wrap">
+                  <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
+                  {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
+                </div>
+                <textarea ref={textareaRef} aria-label="Message" placeholder="Ask anything…" value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={space === "devvrats" ? 2000 : account?.user ? 4000 : 1000} />
+                {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
+              </div>
             </form>
             {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining ?? 0} preview ${(account.remaining ?? 0) === 1 ? "message" : "messages"} available.`} Sign in with <Link href="/auth" prefetch={false} aria-label="Sign in with Devvrats">Devvrats</Link></div>}
             <div className="composer-footnote"><span>Anu can make mistakes. Verify what matters.</span></div>
@@ -625,7 +636,6 @@ export function AnuChat() {
       </dialog>
       <dialog ref={devvratsRef} className="devvrats-dialog" aria-labelledby="devvrats-heading" onClose={() => setDevvratsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setDevvratsOpen(false); }}>
         <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>
-        <div className={`space-switch dialog-space-switch ${devvratsOpen ? "space-devvrats" : "space-anu"}`} role="group" aria-label="Devvrats introduction"><button type="button" onClick={() => setDevvratsOpen(false)}>ANU<span>.</span></button><button type="button" aria-pressed="true">DEVVRATS<span>.</span></button></div>
         <h2 id="devvrats-heading">Anu, within Sabha.</h2>
         <p>Explore Sabha, understand your projects, and turn ideas into reviewed posts and changes.</p>
         <p className="devvrats-dialog-detail">Sign in with Devvrats to continue. Anu uses your Sabha permissions. You review and confirm changes before they’re made.</p>
