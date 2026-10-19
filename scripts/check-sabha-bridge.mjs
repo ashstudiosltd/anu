@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+import ts from 'typescript';
+const source=await readFile(new URL('../lib/anu/sabha-bridge.ts',import.meta.url),'utf8');
+let member={id:'member-a'},called=0,forwarded;
+const env={ANU_INTEGRATION_SECRET:'test-only',NEXT_PUBLIC_SUPABASE_URL:'https://test-project.supabase.co',NODE_ENV:'production'};
+const exports={};
+vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require:name=>name==='server-only'?{}:name==='next/headers'?{cookies:async()=>({getAll:()=>[{name:'sb-test-project-auth-token.0',value:'test-session'},{name:'sb-other-auth-token',value:'do-not-forward'},{name:'unrelated-cookie',value:'do-not-forward'}]})}:name==='./auth'?{memberIdentity:async()=>member}:null,process:{env},URL,Response,TextEncoder,AbortSignal,fetch:async(url,init)=>{called++;forwarded={url:String(url),...init};return Response.json({reply:'Example'});}});
+const {bridgeSabha}=exports;
+const request=(origin='https://anu.devvrats.in')=>new Request('https://anu.devvrats.in/api/sabha/chat',{method:'POST',headers:{Origin:origin},body:'{"message":"hello"}'});
+assert.equal((await bridgeSabha(request('https://attacker.example'),'chat')).status,403);assert.equal(called,0);
+member=null;assert.equal((await bridgeSabha(request(),'chat')).status,401);assert.equal(called,0);member={id:'member-a'};
+env.SABHA_PUBLIC_URL='https://attacker.example';assert.equal((await bridgeSabha(request(),'chat')).status,503);assert.equal(called,0);
+env.SABHA_PUBLIC_URL='https://sabha.devvrats.in';assert.equal((await bridgeSabha(request(),'chat')).status,200);assert.equal(forwarded.url,'https://sabha.devvrats.in/api/anu/chat');assert.equal(forwarded.redirect,'error');assert.equal(forwarded.headers.Cookie,'sb-test-project-auth-token.0=test-session');assert.equal(forwarded.headers['x-anu-member'],'member-a');assert.equal(forwarded.headers['x-anu-integration-key'],'test-only');
+assert.equal((await bridgeSabha(new Request('https://anu.devvrats.in/api/sabha/history?scope=portal:123&unexpected=not-forwarded'),'history')).status,200);assert.equal(forwarded.url,'https://sabha.devvrats.in/api/anu/history?scope=portal%3A123');
+console.log('PASS: same-origin writes, member requirement, trusted destination, no redirects, project-only cookie forwarding, member binding, and query allowlist.');

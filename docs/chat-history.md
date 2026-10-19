@@ -30,3 +30,9 @@ ANU_TEST_PGLITE_MODULE=/tmp/anu-history-validation/node_modules/@electric-sql/pg
 ```
 
 The test checks owner isolation, anonymous denial, direct-write denial, revisions, separate space search, chat caps, expiry, and cleanup. It does not substitute for testing the target Supabase project's permissions and scheduler. Before deployment, sign in with two test accounts, confirm cross-account isolation, save/reopen each space on another device, test deletion, check a revision conflict, and confirm the cleanup job succeeds. Do not change production signing or integration secrets to enable chat history.
+
+## Permission-checked Sabha conversations
+
+DEVVRATS now uses `/api/sabha/*`, a fixed-destination server bridge to Sabha, instead of storing new private transcripts in this table. The bridge requires a verified Anu member and forwards only this Supabase project's shared auth cookies plus the server integration secret and expected member ID. Sabha independently verifies the session and matching member. No service-role access or browser-held integration credential is introduced.
+
+DEVVRATS transcripts are not written to sessionStorage. Its conversation list and reopening use Sabha's source-permission checks. ANU history continues using `anu_conversations`. Old DEVVRATS rows in that table remain until expired/deleted but are not republished as authorized Sabha history. A deployment of both applications is required for the new paths.

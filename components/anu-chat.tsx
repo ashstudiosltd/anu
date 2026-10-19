@@ -3,6 +3,7 @@
 import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useTheme } from "next-themes";
+import { AnuActionCard, type ActionPreview } from "./anu/action-card";
 import { AnuPwa } from "./anu-pwa";
 import { AnuMessage } from "./anu-message";
 import {
@@ -23,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 
-type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }> };
+type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }>; action?: ActionPreview };
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[]; space?: "anu" | "devvrats"; revision?: number; loaded?: boolean };
 const HISTORY_KEY = "anu-session-conversations-v2";
 type AccountSession = { user: { id: string; name: string } | null; remaining: number | null; loginUrl: string };
@@ -191,13 +192,13 @@ export function AnuChat() {
           const key = `${HISTORY_KEY}:${identity}`;
           let restored: Conversation[] = [];
           try {
-            restored = restoreHistory(sessionStorage.getItem(key));
+            restored = space === "devvrats" ? [] : restoreHistory(sessionStorage.getItem(key));
             if (!restored.length && space === "anu") restored = restoreHistory(sessionStorage.getItem(`${HISTORY_KEY}:${owner}`));
           } catch { /* Storage can be disabled. */ }
           let syncNotice = "";
           if (next.user) {
             try {
-              const historyResponse = await fetch(`/api/history?space=${space}`, { cache: "no-store" });
+              const historyResponse = await fetch(space === "devvrats" ? "/api/sabha/conversations" : `/api/history?space=${space}`, { cache: "no-store" });
               const data = await historyResponse.json() as { error?: string; conversations: Conversation[] };
               if (!historyResponse.ok) throw new Error(data.error || "Chat sync is unavailable. Your history stays in this tab.");
               const remote = data.conversations as Conversation[];
@@ -230,16 +231,16 @@ export function AnuChat() {
   }, [space]);
 
   useEffect(() => {
-    if (!historyReady || !historyKey.current) return;
+    if (!historyReady || !historyKey.current || space === "devvrats") return;
     try { sessionStorage.setItem(historyKey.current, JSON.stringify(fitHistory(conversations))); } catch { /* Chat still works without storage. */ }
-  }, [conversations, historyReady]);
+  }, [conversations, historyReady, space]);
 
   useEffect(() => {
     if (!searchOpen || !search.trim() || !account?.user) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
-        const response = await fetch(`/api/history?space=${space}&q=${encodeURIComponent(search.trim().slice(0, 200))}`, { cache: "no-store", signal: controller.signal });
+        const response = await fetch(`${space === "devvrats" ? "/api/sabha/conversations?" : `/api/history?space=${space}&`}q=${encodeURIComponent(search.trim().slice(0, 200))}`, { cache: "no-store", signal: controller.signal });
         const data = await response.json() as { conversations: Conversation[]; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not search synced chats.");
         if (!controller.signal.aborted) setSearchMatches(data.conversations);
@@ -344,29 +345,34 @@ export function AnuChat() {
     }
 
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(space === "devvrats" ? "/api/sabha/chat" : "/api/chat", {
         method: "POST",
         signal: controller.signal,
         headers: { "Content-Type": "application/json", "x-anu-account": account.user?.id || "guest" },
         body: JSON.stringify({
           message: text,
           space,
-          history: contextHistory,
+          ...(space === "devvrats" ? { scope: `portal:${conversationId}`, turnId: crypto.randomUUID() } : { history: contextHistory }),
         }),
       });
       if (response.status === 409) { window.location.reload(); return; }
-      const data = (await response.json()) as { reply?: string; error?: string; sources?: Message["sources"]; loginRequired?: boolean };
+      const data = (await response.json()) as { reply?: string; error?: string; sources?: Message["sources"]; loginRequired?: boolean; action?: ActionPreview; actionNotice?: string; historySaved?: boolean };
       if (requestIdentity !== identityRef.current) return;
       if (!account.user && (response.ok || data.loginRequired)) setAccount((current) => current ? {...current, remaining: data.loginRequired ? 0 : Math.max(0, (current.remaining ?? 5)-1)} : current);
       if (!response.ok) throw new Error(data.error || "Anu couldn't answer just now. Please try again.");
-      const completedMessages: Message[] = [...nextMessages, { role: "assistant", text: data.reply || "I couldn't form a response. Try asking another way.", sources: data.sources }];
+      const completedMessages: Message[] = [...nextMessages, { role: "assistant", text: data.reply || "I couldn't form a response. Try asking another way.", sources: data.sources, action: data.action }];
       setMessages(completedMessages);
       setFreshReply(completedMessages.length - 1);
       setConversations((current) => fitHistory([
         makeConversation(conversationId, completedMessages, space, conversations.find((item) => item.id === conversationId)?.revision || 0),
         ...current.filter((item) => item.id !== conversationId),
       ]));
-      if (account.user) {
+      if (space === "devvrats") {
+        if (!data.historySaved) setNotice("This Sabha reply was not saved to your account.");
+        if (data.actionNotice) setNotice(data.actionNotice);
+        if (data.historySaved) setConversations((current) => current.map((item) => item.id === conversationId ? { ...item, revision: 1 } : item));
+      }
+      if (account.user && space === "anu") {
         const saved = makeConversation(conversationId, completedMessages, space, conversations.find((item) => item.id === conversationId)?.revision || 0);
         try {
           const sync = await fetch("/api/history", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...saved, messages: saved.messages.slice(-60).map(({ role, text }) => ({ role, text })) }), signal: controller.signal });
@@ -416,11 +422,11 @@ export function AnuChat() {
     if (account?.user && conversation.revision) {
       busyRef.current = true; setBusy(true);
       try {
-        const response = await fetch(`/api/history?space=${space}&id=${conversation.id}`, { cache: "no-store" });
-        const data = await response.json() as { error?: string; conversation: Conversation };
+        const response = await fetch(space === "devvrats" ? `/api/sabha/history?scope=portal:${conversation.id}` : `/api/history?space=${space}&id=${conversation.id}`, { cache: "no-store" });
+        const data = await response.json() as { error?: string; conversation: Conversation; turns?: Array<{ question: string; answer: string; sources: Message["sources"] }> };
         if (!response.ok) throw new Error(data.error || "Could not load this chat.");
         if (identity !== identityRef.current) return;
-        conversation = { ...data.conversation, loaded: true };
+        conversation = space === "devvrats" ? { ...conversation, messages: (data.turns || []).flatMap((turn): Message[] => [{ role: "user", text: turn.question }, { role: "assistant", text: turn.answer, sources: turn.sources }]), loaded: true } : { ...data.conversation, loaded: true };
         setConversations((current) => current.map((item) => item.id === conversation.id ? conversation : item));
       } catch (error) { setNotice(error instanceof Error ? error.message : "Could not load this chat."); return; }
       finally { busyRef.current = false; setBusy(false); }
@@ -439,7 +445,7 @@ export function AnuChat() {
     if (account?.user) {
       busyRef.current = true; setBusy(true);
       try {
-        const response = await fetch(`/api/history?space=${space}&id=${id}`, { method: "DELETE" });
+        const response = await fetch(space === "devvrats" ? `/api/sabha/history?scope=portal:${id}` : `/api/history?space=${space}&id=${id}`, { method: "DELETE" });
         if (!response.ok) { const data = await response.json() as { error?: string }; throw new Error(data.error || "Could not delete this chat."); }
       } catch (error) { setNotice(error instanceof Error ? error.message : "Could not delete this chat."); return; }
       finally { busyRef.current = false; setBusy(false); }
@@ -527,6 +533,8 @@ export function AnuChat() {
                     {message.role === "assistant" && <LivingDot state={index === freshReply ? "replying" : "idle"} className="message-dot" />}
                     <div className={`message-bubble ${message.role}`} aria-label={message.role === "user" ? "Your message" : "Anu’s reply"}>
                       {message.role === "assistant" ? <AnuMessage text={message.text} fresh={index === freshReply} /> : <p>{message.text}</p>}
+                      {space === "devvrats" && message.sources?.length ? <div className="source-list">{message.sources.map((source) => <a key={source.url} className="source-link" href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div> : null}
+                      {message.action && <AnuActionCard action={message.action} endpoint="/api/sabha/actions" />}
                     </div>
                   </article>)}
                 </div>
@@ -541,7 +549,7 @@ export function AnuChat() {
                 <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
                 {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
               </div>
-              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Sabha…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={account?.user ? 4000 : 1000} />
+              <textarea ref={textareaRef} aria-label="Message Anu" placeholder={space === "devvrats" ? "Ask about Sabha…" : "Ask Anu anything…"} value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={space === "devvrats" ? 2000 : account?.user ? 4000 : 1000} />
               {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
             </form>
             {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining ?? 0} preview ${(account.remaining ?? 0) === 1 ? "message" : "messages"} available.`} Sign in with <Link href="/auth" prefetch={false} aria-label="Sign in with Devvrats">Devvrats</Link></div>}
@@ -560,16 +568,16 @@ export function AnuChat() {
         <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>
         <div className={`space-switch dialog-space-switch ${devvratsOpen ? "space-devvrats" : "space-anu"}`} role="group" aria-label="Devvrats introduction"><button type="button" onClick={() => setDevvratsOpen(false)}>ANU<span>.</span></button><button type="button" aria-pressed="true">DEVVRATS<span>.</span></button></div>
         <h2 id="devvrats-heading">Anu, within Sabha.</h2>
-        <p>Understand an article, explore a project, or work through a question with Anu.</p>
-        <p className="devvrats-dialog-detail">Sign in with Devvrats to continue. Connected Sabha records are available only where access is provided.</p>
+        <p>Explore Sabha, understand your projects, and turn ideas into reviewed posts and changes.</p>
+        <p className="devvrats-dialog-detail">Sign in with Devvrats to continue. Anu uses your Sabha permissions. You review and confirm changes before they’re made.</p>
         <Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link>
         <a className="devvrats-learn" href="https://www.devvrats.in/" target="_blank" rel="noreferrer">Discover Devvrats</a>
       </dialog>
       <dialog ref={privacyRef} className="privacy-dialog" onClose={() => setPrivacyOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setPrivacyOpen(false); }}>
         <div className="dialog-heading"><ShieldCheck size={20} /><button className="icon-button" aria-label="Close privacy information" onClick={() => setPrivacyOpen(false)}><X size={19} /></button></div>
         <h2>Your chats, your space.</h2>
-        <p>ANU and DEVVRATS have separate histories. Signed-in chats sync to your account when chat sync is connected. Guest chats stay in this browser tab.</p>
-        <p>We retain up to 20 chats per space. Chats expire after 45 days without a new saved reply. A daily cleanup removes expired records. Each saved chat keeps recent text within 60 messages and a compact storage limit; older messages may be dropped from long chats.</p>
+        <p>ANU and DEVVRATS have separate histories. Signed-in chats sync to your account when connected. DEVVRATS chats use Sabha’s history, with source access rechecked when reopened. Guest chats stay in this browser tab.</p>
+        <p>ANU keeps up to 20 chats with recent text within a compact storage limit. DEVVRATS keeps up to 20 portal chats with 20 recent question-and-answer turns each. History expires after 45 days; older context may be omitted. DEVVRATS transcripts are not copied into this browser’s session storage.</p>
         <p>You can delete a chat from the sidebar. Deletion removes its synced record and this tab’s local copy. Deleting chats does not erase content already sent to Google. Keep sensitive information out of chat.</p>
         <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noreferrer">Google’s Gemini API terms <ArrowUpRight size={13} /></a>
         <p className="dialog-note">Signing out removes this account’s local cache from this tab. Synced chats remain until deleted or expired. Anu receives your verified display name and the selected conversation’s recent messages, not your entire history.</p>

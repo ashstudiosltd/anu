@@ -77,7 +77,7 @@ export async function replyToChat(request: Request, mode: "full" | "main-demo" |
         generationConfig: {
           ...(blogContext?.jsonReply ? { responseMimeType: "application/json" } : {}),
           thinkingConfig: { thinkingLevel: "minimal" },
-          maxOutputTokens: demo ? 420 : 900,
+          maxOutputTokens: demo ? 420 : blogContext?.jsonReply ? 1800 : 900,
         },
       }),
       signal: AbortSignal.timeout(45_000),
