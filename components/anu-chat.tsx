@@ -28,6 +28,8 @@ type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ tit
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[]; space?: "anu" | "devvrats"; revision?: number; loaded?: boolean };
 const HISTORY_KEY = "anu-session-conversations-v2";
 type AccountSession = { user: { id: string; name: string } | null; remaining: number | null; loginUrl: string };
+type AnuPreferences = { remember: string; response_style: string; theme: "light" | "dark" | "system" };
+type MemberProfile = { account: { id: string; name: string; username: string | null; email: string | null }; preferences: AnuPreferences; hasPreferences: boolean };
 const MAX_CONVERSATIONS = 20;
 const MAX_STORED_CHARACTERS = 350_000;
 
@@ -83,6 +85,7 @@ function LivingDot({ state = "idle", energy = 0, className = "" }: { state?: Dot
 
 export function AnuChat() {
   const { resolvedTheme, setTheme } = useTheme();
+  const currentTheme = useRef(resolvedTheme);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -120,6 +123,16 @@ export function AnuChat() {
   const clansRef = useRef<HTMLDialogElement>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDialogElement>(null);
+  const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
+  const [profileDraft, setProfileDraft] = useState<AnuPreferences>({ remember: "", response_style: "", theme: "system" });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileNotice, setProfileNotice] = useState("");
+  const [account, setAccount] = useState<AccountSession | null>(null);
+  const accountId = account?.user?.id;
+  const visibleProfile = memberProfile?.account.id === accountId ? memberProfile : null;
+  const profileLoading = !!accountId && !visibleProfile && !profileNotice;
+
+  useEffect(() => { currentTheme.current = resolvedTheme; }, [resolvedTheme]);
 
   useEffect(() => {
     if (devvratsOpen && !devvratsRef.current?.open) devvratsRef.current?.showModal();
@@ -139,6 +152,49 @@ export function AnuChat() {
     else if (profileRef.current?.open) profileRef.current.close();
   }, [profileOpen]);
 
+  useEffect(() => {
+    let active = true;
+    if (!accountId) return;
+    void fetch("/api/profile", { cache: "no-store" }).then(async (response) => {
+      const data = await response.json() as MemberProfile & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Your profile could not be loaded.");
+      if (!active) return;
+      setMemberProfile(data);
+      const localTheme: AnuPreferences["theme"] = currentTheme.current === "dark" ? "dark" : "light";
+      const synced: AnuPreferences = data.hasPreferences ? data.preferences : { ...data.preferences, theme: localTheme };
+      setProfileDraft(synced);
+      if (data.hasPreferences) setTheme(data.preferences.theme);
+      setProfileNotice("");
+    }).catch((error) => { if (active) setProfileNotice(error instanceof Error ? error.message : "Your profile could not be loaded."); });
+    return () => { active = false; };
+  }, [accountId, setTheme]);
+
+  async function saveProfile() {
+    setProfileSaving(true);
+    setProfileNotice("");
+    try {
+      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profileDraft) });
+      const data = await response.json() as { preferences?: AnuPreferences; error?: string };
+      if (!response.ok || !data.preferences) throw new Error(data.error || "Your profile could not be saved.");
+      setMemberProfile((current) => current ? { ...current, preferences: data.preferences!, hasPreferences: true } : current);
+      setProfileDraft(data.preferences);
+      setTheme(data.preferences.theme);
+      setProfileNotice("Your profile is saved and synced with Devvrats.");
+    } catch (error) { setProfileNotice(error instanceof Error ? error.message : "Your profile could not be saved."); }
+    finally { setProfileSaving(false); }
+  }
+
+  async function changeTheme(nextTheme: "light" | "dark") {
+    setTheme(nextTheme);
+    setProfileDraft((current) => ({ ...current, theme: nextTheme }));
+    if (!visibleProfile) return;
+    try {
+      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...visibleProfile.preferences, theme: nextTheme }) });
+      const data = await response.json() as { preferences?: AnuPreferences };
+      if (response.ok && data.preferences) setMemberProfile((current) => current ? { ...current, preferences: data.preferences!, hasPreferences: true } : current);
+    } catch { /* The chosen theme remains active on this device if sync is unavailable. */ }
+  }
+
   function chooseSpace(next: "anu" | "devvrats") {
     if (next === "devvrats" && !account?.user) { setDevvratsOpen(true); return; }
     if (busy) return;
@@ -152,7 +208,6 @@ export function AnuChat() {
   const [historyReady, setHistoryReady] = useState(false);
   const [freshReply, setFreshReply] = useState<number | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
-  const [account, setAccount] = useState<AccountSession | null>(null);
   const historyKey = useRef("");
   const identityRef = useRef<string | null>(null);
   const busyRef = useRef(false);
@@ -499,7 +554,7 @@ export function AnuChat() {
         <header className="topbar">
           <button className="icon-button menu-button" aria-label="Open conversations" aria-expanded={mobileNav} onClick={() => setMobileNav(true)}><Menu size={20} /></button>
           <div className={`space-switch space-${space}`} role="group" aria-label="Choose your space"><button aria-pressed={space === "anu"} onClick={() => chooseSpace("anu")} disabled={busy}>ANU<span>.</span></button><button aria-pressed={space === "devvrats"} onClick={() => chooseSpace("devvrats")} disabled={busy}>DEVVRATS<span>.</span></button></div>
-          <button className="icon-button theme-toggle topbar-theme" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Switch between light and dark theme" title="Switch light / dark theme"><Sun className="sun-icon" size={19} /><Moon className="moon-icon" size={19} /></button>
+          <button className="icon-button theme-toggle topbar-theme" onClick={() => void changeTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Switch between light and dark theme" title="Switch light / dark theme"><Sun className="sun-icon" size={19} /><Moon className="moon-icon" size={19} /></button>
         </header>
         {notice && <div className="notice topbar-notice" role="alert">{notice}</div>}
 
@@ -552,7 +607,22 @@ export function AnuChat() {
         <div className="search-results">{visibleConversations.map((conversation) => <button className="search-result" key={conversation.id} disabled={busy} onClick={() => { openConversation(conversation); setSearchOpen(false); }}><MessageCircle size={18} /><span><strong>{conversation.title}</strong>{search.trim() && <small>{conversation.messages.find((message) => message.text.toLowerCase().includes(search.toLowerCase().trim()))?.text.slice(0, 140)}</small>}</span><ArrowUpRight size={15} /></button>)}{!visibleConversations.length && <p className="search-empty">{search.trim() ? "No conversations match your search." : "No conversations yet."}</p>}</div>
       </dialog>
       <dialog ref={clansRef} className="privacy-dialog" aria-labelledby="clans-heading" onClose={() => setClansOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setClansOpen(false); }}><div className="dialog-heading"><Users size={23} /><button className="icon-button" aria-label="Close clans" onClick={() => setClansOpen(false)}><X size={18} /></button></div><h2 id="clans-heading">Clans</h2><p>Clans aren’t connected to Anu yet. This space will hold your groups when they’re available.</p></dialog>
-      <dialog ref={profileRef} className="privacy-dialog" aria-labelledby="profile-heading" onClose={() => setProfileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setProfileOpen(false); }}><div className="dialog-heading"><UserRound size={23} /><button className="icon-button" aria-label="Close profile" onClick={() => setProfileOpen(false)}><X size={18} /></button></div><h2 id="profile-heading">{account?.user?.name || "DEVVRAT"}</h2><p>{account?.user ? "You’re signed in with Devvrats. Personal details and personalization will be added here next." : "Sign in with Devvrats to use your member profile."}</p>{!account?.user && <Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link>}</dialog>
+      <dialog ref={profileRef} className="privacy-dialog profile-dialog" aria-labelledby="profile-heading" onClose={() => setProfileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setProfileOpen(false); }}>
+        <div className="dialog-heading"><UserRound size={23} /><button className="icon-button" aria-label="Close profile" onClick={() => setProfileOpen(false)}><X size={18} /></button></div>
+        <h2 id="profile-heading">Your Anu profile</h2>
+        {!account?.user ? <><p>Sign in with Devvrats to sync your profile and preferences across your devices.</p><Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link></> : <>
+          <section className="profile-account"><span className="profile-avatar"><UserRound size={19} /></span><div><strong>{visibleProfile?.account.name || account.user.name}</strong><span>{visibleProfile?.account.email || "Signed in with Devvrats"}</span>{visibleProfile?.account.username && <span>@{visibleProfile.account.username}</span>}</div><a href="https://sabha.devvrats.in/settings/profile" target="_blank" rel="noreferrer">Manage account <ArrowUpRight size={13} /></a></section>
+          <label className="profile-label" htmlFor="profile-remember">What should Anu remember about you?</label>
+          <textarea id="profile-remember" className="profile-textarea" maxLength={1500} placeholder="Your role, goals, projects, or details that help Anu give relevant answers…" value={profileDraft.remember} onChange={(event) => setProfileDraft((current) => ({ ...current, remember: event.target.value }))} />
+          <label className="profile-label" htmlFor="profile-style">How would you like Anu to respond?</label>
+          <textarea id="profile-style" className="profile-textarea profile-style" maxLength={1000} placeholder="For example: concise answers, explain unfamiliar terms, use examples…" value={profileDraft.response_style} onChange={(event) => setProfileDraft((current) => ({ ...current, response_style: event.target.value }))} />
+          <label className="profile-label">Theme</label>
+          <div className="profile-theme" role="group" aria-label="Choose theme"><button type="button" aria-pressed={profileDraft.theme === "light"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "light" }))}>Light</button><button type="button" aria-pressed={profileDraft.theme === "dark"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "dark" }))}>Dark</button><button type="button" aria-pressed={profileDraft.theme === "system"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "system" }))}>System</button></div>
+          <p className="profile-privacy">Your profile notes are private to your Devvrats account and shape replies in both Anu and DEVVRATS. Anu includes them with your message when asking Google Gemini; don’t add passwords, keys, or details you wouldn’t want processed to answer you.</p>
+          {profileNotice && <p className="profile-status" role="status">{profileNotice}</p>}
+          <div className="profile-actions"><button className="profile-save" type="button" onClick={() => void saveProfile()} disabled={profileLoading || profileSaving}>{profileSaving ? "Saving…" : "Save profile"}</button>{profileLoading && <span>Syncing profile…</span>}</div>
+        </>}
+      </dialog>
       <dialog ref={devvratsRef} className="devvrats-dialog" aria-labelledby="devvrats-heading" onClose={() => setDevvratsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setDevvratsOpen(false); }}>
         <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>
         <div className={`space-switch dialog-space-switch ${devvratsOpen ? "space-devvrats" : "space-anu"}`} role="group" aria-label="Devvrats introduction"><button type="button" onClick={() => setDevvratsOpen(false)}>ANU<span>.</span></button><button type="button" aria-pressed="true">DEVVRATS<span>.</span></button></div>

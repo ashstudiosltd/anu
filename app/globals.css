@@ -548,6 +548,31 @@ html[data-theme="light"] .welcome-wrap .dynamic-greeting .greeting-highlight { c
 @keyframes greeting-cycle { 0% { opacity: 0; transform: translateY(5px); } 8%, 90% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .dynamic-greeting { animation: none; } }
 
+/* The profile keeps the app's existing lavender and surface palette. */
+.profile-dialog { width: min(calc(100vw - 32px), 620px); }
+.profile-dialog h2 { margin-bottom: 10px; }
+.profile-account { display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 14px 0 18px; margin-bottom: 20px; border-bottom: 1px solid var(--line); }
+.profile-avatar { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 50%; color: var(--accent); background: var(--accent-wash); }
+.profile-account div { display: grid; gap: 3px; min-width: 0; }
+.profile-account div strong { overflow: hidden; color: var(--foreground); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.profile-account div span { color: var(--muted); font-size: 11px; }
+.profile-account a { margin: 0!important; white-space: nowrap; }
+.profile-label { display: block; margin: 18px 0 8px; color: var(--foreground); font-size: 12px; font-weight: 700; }
+.profile-textarea { display: block; width: 100%; min-height: 92px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 15px; outline: none; color: var(--foreground); background: var(--surface); font: inherit; font-size: 12px; line-height: 1.65; resize: vertical; }
+.profile-textarea:focus { border-color: var(--accent); }
+.profile-textarea::placeholder { color: var(--muted); }
+.profile-style { min-height: 72px; }
+.profile-theme { display: flex; width: fit-content; padding: 4px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.profile-theme button { min-width: 72px; padding: 8px 12px; border: 0; border-radius: 999px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 600; transition: color .2s, background .2s, box-shadow .2s; }
+.profile-theme button[aria-pressed="true"] { color: var(--foreground); background: var(--panel); box-shadow: 0 1px 5px #0002; }
+.profile-dialog .profile-privacy { margin-top: 18px; color: var(--muted); font-size: 10px; line-height: 1.65; }
+.profile-dialog .profile-status { margin: 10px 0; color: var(--accent-text); font-size: 11px; }
+.profile-actions { display: flex; align-items: center; gap: 12px; margin-top: 15px; }
+.profile-actions span { color: var(--muted); font-size: 11px; }
+.profile-save { padding: 10px 17px; border: 0; border-radius: 999px; color: var(--send-fg); background: var(--send-bg); font-size: 12px; font-weight: 700; }
+.profile-save:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+@media (max-width: 540px) { .profile-dialog { padding: 21px; } .profile-account { grid-template-columns: 40px minmax(0,1fr); } .profile-account a { grid-column: 2; } .profile-theme { width: 100%; } .profile-theme button { flex: 1; min-width: 0; } }
+
 /* Open conversation typography: voice and alignment replace message boxes. */
 .message-row { margin-bottom: 30px; }
 .message-bubble, .message-bubble.user, .message-bubble.assistant { padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: var(--foreground); font-size: 15px; line-height: 1.85; }

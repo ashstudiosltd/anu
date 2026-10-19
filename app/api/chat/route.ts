@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { env } from "@/lib/anu/env";
 import { replyToChat } from "@/lib/anu/reply-service";
 import { memberIdentity, previewAllowance } from "@/lib/anu/auth";
+import { readAnuMemberProfile } from "@/lib/anu/member-profile";
 export async function POST(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) return new Response(null, {status:403});
   try {
@@ -14,7 +15,8 @@ export async function POST(request: Request) {
       if (!preview.allowed) return Response.json({error:"Sign in with Devvrats to keep talking with Anu.", loginRequired:true}, {status:401, headers:{"Cache-Control":"no-store"}});
     }
     if (!env.GEMINI_API_KEY) return Response.json({ error: "Anu’s reply connection is missing. Add GEMINI_API_KEY to .env.local and restart the app to enable replies." }, { status: 503, headers: { "Cache-Control": "no-store" } });
-    const response = await replyToChat(request, member ? "full" : "main-demo", undefined, member?.name);
+    const profile = member ? await readAnuMemberProfile(member.id) : null;
+    const response = await replyToChat(request, member ? "full" : "main-demo", undefined, member?.name, profile ? { remember: profile.preferences.remember, responseStyle: profile.preferences.response_style } : undefined);
     if (!member && response.ok) await previewAllowance(true);
     return response;
   } catch {
