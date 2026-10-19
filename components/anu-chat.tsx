@@ -100,16 +100,8 @@ export function AnuChat() {
     }), 6000);
     return () => window.clearInterval(timer);
   }, [messages.length, input]);
-  const [typing, setTyping] = useState(false);
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => { if (typingTimer.current) clearTimeout(typingTimer.current); }, []);
-
   function updateInput(value: string) {
     setInput(value);
-    setTyping(Boolean(value.trim()));
-    if (typingTimer.current) clearTimeout(typingTimer.current);
-    typingTimer.current = setTimeout(() => setTyping(false), 850);
   }
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -460,8 +452,6 @@ export function AnuChat() {
     }
   }
 
-  const dotState: DotState = busy ? "thinking" : freshReply !== null ? "replying" : typing && input.trim() ? "listening" : "idle";
-  const dotEnergy = dotState === "listening" ? Math.min(input.length / 240, 1) : 0;
   const localMatches = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
   const visibleConversations = searchOpen && search.trim() && account?.user && searchMatches ? [...searchMatches, ...localMatches.filter((item) => !searchMatches.some((match) => match.id === item.id))].slice(0, 20) : localMatches;
   const firstName = account?.user?.name.trim().split(/\s+/)[0] || "DEVVRAT";
@@ -520,7 +510,6 @@ export function AnuChat() {
           }}>
             {messages.length === 0 ? (
               <div className="welcome-wrap">
-                <LivingDot state={dotState} energy={dotEnergy} className="welcome-dot" />
                 <h1 key={welcomeIndex} className={`dynamic-greeting ${input.trim() ? "greeting-paused" : ""}`}>
                   {welcomeIndex === -1 ? <>Namastey, <span className="greeting-highlight">{firstName}</span>.</> : welcomeIndex === 0 ? <>What is <span className="greeting-highlight">Anu</span>?</> : welcomeIndex === 1 ? <>What is <span className="greeting-highlight">Pata</span>?</> : <><span className="greeting-highlight">{firstName}</span>, what are you building?<span className="greeting-help">Want any help?</span></>}
                 </h1>
