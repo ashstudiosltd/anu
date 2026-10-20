@@ -2,6 +2,9 @@
 
 import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { AnuOrb } from "./anu/orb";
+import orbStyles from "./anu/orb.module.css";
 import { useTheme } from "next-themes";
 import { AnuActionCard, type ActionPreview } from "./anu/action-card";
 import { AnuPwa } from "./anu-pwa";
@@ -81,16 +84,17 @@ function restoreHistory(raw: string | null): Conversation[] {
 type DotState = "idle" | "listening" | "thinking" | "replying";
 
 function LivingDot({ state = "idle", energy = 0, className = "" }: { state?: DotState; energy?: number; className?: string }) {
-  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><span className="dot-body"><span className="dot-eyes"><span /><span /></span></span></span>;
+  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><Image className="dot-body" src="/brands/anu-orb-plush.png" width={512} height={512} alt="" /></span>;
 }
 
-export function AnuChat() {
+export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
   const { resolvedTheme, setTheme } = useTheme();
   const currentTheme = useRef(resolvedTheme);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const [composerFocused, setComposerFocused] = useState(false);
   const [composerMenu, setComposerMenu] = useState(false);
   const [sidebarModeOpen, setSidebarModeOpen] = useState(false);
   const composerRef = useRef<HTMLDivElement>(null);
@@ -129,7 +133,7 @@ export function AnuChat() {
   const [profileDraft, setProfileDraft] = useState<AnuPreferences>({ remember: "", response_style: "", theme: "system" });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileNotice, setProfileNotice] = useState("");
-  const [account, setAccount] = useState<AccountSession | null>(null);
+  const [account, setAccount] = useState<AccountSession | null>(localDemo ? { user: null, remaining: null, loginUrl: "/auth" } : null);
   const accountId = account?.user?.id;
   const visibleProfile = memberProfile?.account.id === accountId ? memberProfile : null;
   const profileLoading = !!accountId && !visibleProfile && !profileNotice;
@@ -207,7 +211,7 @@ export function AnuChat() {
     setSpace(next);
     startNewChat();
   }
-  const [historyReady, setHistoryReady] = useState(false);
+  const [historyReady, setHistoryReady] = useState(localDemo);
   const [freshReply, setFreshReply] = useState<number | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const historyKey = useRef("");
@@ -215,11 +219,13 @@ export function AnuChat() {
   const busyRef = useRef(false);
   const requestRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const presenceRef = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const privacyRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
+    if (localDemo) return;
     let active = true;
     let pending = false;
     async function refreshAccount() {
@@ -277,7 +283,7 @@ export function AnuChat() {
     window.addEventListener("focus", refreshAccount);
     const timer = window.setInterval(refreshAccount, 60_000);
     return () => { active = false; clearInterval(timer); window.removeEventListener("focus", refreshAccount); requestRef.current?.abort(); };
-  }, [space]);
+  }, [space, localDemo]);
 
   useEffect(() => {
     if (!historyReady || !historyKey.current || space === "devvrats") return;
@@ -310,6 +316,39 @@ export function AnuChat() {
       window.location.reload();
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not sign out."); }
   }
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const presence = presenceRef.current;
+    if (!messages.length || !scroller || !presence || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let frame = 0;
+    let lastTop = scroller.scrollTop;
+    let lastTime = 0;
+    let motion = 0;
+    let target = 0;
+    const settle = (now: number) => {
+      const dt = lastTime ? Math.min((now - lastTime) / 1000, .032) : 1 / 60;
+      lastTime = now;
+      motion += (target - motion) * (1 - Math.exp(-9 * dt));
+      target *= Math.exp(-7 * dt);
+      presence.style.setProperty("--scroll-drift", `${motion * 2.5}px`);
+      presence.style.setProperty("--scroll-tilt", `${motion * .8}deg`);
+      if (Math.abs(motion) + Math.abs(target) > .002) frame = requestAnimationFrame(settle);
+      else { frame = 0; lastTime = 0; }
+    };
+    const followScroll = () => {
+      target = Math.max(-1, Math.min(1, (scroller.scrollTop - lastTop) / 45));
+      lastTop = scroller.scrollTop;
+      if (!frame) frame = requestAnimationFrame(settle);
+    };
+    scroller.addEventListener("scroll", followScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", followScroll);
+      cancelAnimationFrame(frame);
+      presence.style.removeProperty("--scroll-drift");
+      presence.style.removeProperty("--scroll-tilt");
+    };
+  }, [messages.length]);
 
   useEffect(() => {
     const scroller = scrollRef.current;
@@ -359,7 +398,10 @@ export function AnuChat() {
     ], { duration: 580, easing: "cubic-bezier(.22,.61,.36,1)" });
   }, [messages.length]);
 
-  useEffect(() => () => composerAnimation.current?.cancel(), []);
+  useEffect(() => () => {
+    composerAnimation.current?.cancel();
+    requestRef.current?.abort();
+  }, []);
 
   async function sendMessage(value = input) {
     const text = value.trim();
@@ -394,6 +436,27 @@ export function AnuChat() {
     }
 
     try {
+      if (localDemo) {
+        // This branch is available only on the development-only /demo page.
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => { window.clearTimeout(timer); reject(new DOMException("Stopped", "AbortError")); };
+          const timer = window.setTimeout(() => { controller.signal.removeEventListener("abort", abort); resolve(); }, 1100);
+          controller.signal.addEventListener("abort", abort, { once: true });
+        });
+        const reply = /\b(sad|lonely|worried)\b/i.test(text)
+          ? "I’m here with you. We can take this one little step at a time. What’s on your mind?"
+          : /\b(hi|hello|hey)\b/i.test(text)
+            ? "Hey, you. I’m right here, keeping you company. What shall we explore together?"
+            : "I’m listening. Tell me a little more — we can think it through together. This is a local practice conversation, so I’m only using a simulated reply.";
+        const completed: Message[] = [...nextMessages, { role: "assistant", text: reply }];
+        setMessages(completed);
+        setFreshReply(completed.length - 1);
+        setConversations((current) => fitHistory([
+          makeConversation(conversationId, completed, space),
+          ...current.filter((item) => item.id !== conversationId),
+        ]));
+        return;
+      }
       const response = await fetch(space === "devvrats" ? "/api/sabha/chat" : "/api/chat", {
         method: "POST",
         signal: controller.signal,
@@ -566,7 +629,10 @@ export function AnuChat() {
         {notice && <div className="notice topbar-notice" role="alert">{notice}</div>}
 
         <div className={`chat-stage ${messages.length ? "has-messages" : "is-welcome"}`}>
-          <div className="conversation-scroll" ref={scrollRef} onScroll={(event) => {
+          <div ref={presenceRef} className={`${orbStyles.presence} ${messages.length ? orbStyles.presenceChat : ""}`} aria-label={messages.length ? "Anu is here with you" : "Meet Anu"}>
+            <AnuOrb inputRef={textareaRef} value={input} focused={composerFocused} busy={busy} chatting={messages.length > 0} replying={freshReply !== null} />
+          </div>
+          <div className={`conversation-scroll ${messages.length ? orbStyles.conversation : ""}`} ref={scrollRef} onScroll={(event) => {
             const node = event.currentTarget;
             nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
           }}>
@@ -579,8 +645,7 @@ export function AnuChat() {
             ) : (
               <div className="thread-wrap" key={activeConversationId}>
                 <div className="message-list" role="log" aria-label="Conversation messages" aria-live="polite" aria-relevant="additions">
-                  {messages.map((message, index) => <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""}`} key={`${index}-${message.role}`}>
-                    {message.role === "assistant" && <LivingDot state={index === freshReply ? "replying" : "idle"} className="message-dot" />}
+                  {messages.map((message, index) => <article className={`message-row ${message.role} ${index === freshReply ? "fresh-message" : ""} ${orbStyles.message}`} key={`${index}-${message.role}`}>
                     <div className={`message-bubble ${message.role}`} aria-label={message.role === "user" ? "Your message" : "Anu’s reply"}>
                       {message.role === "assistant" ? <AnuMessage text={message.text} fresh={index === freshReply} /> : <p>{message.text}</p>}
                       {space === "devvrats" && message.sources?.length ? <div className="source-list">{message.sources.map((source) => <a key={source.url} className="source-link" href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div> : null}
@@ -589,7 +654,7 @@ export function AnuChat() {
                     </div>
                   </article>)}
                 </div>
-                {busy && <div className="message-row assistant thinking-row" role="status" aria-label="Anu is thinking"><LivingDot state="thinking" className="message-dot" /><div className="typing-bubble" aria-hidden="true"><i /><i /><i /></div></div>}
+                {busy && <div className="message-row assistant thinking-row" role="status" aria-label="Anu is thinking"><div className="typing-bubble" aria-hidden="true"><i /><i /><i /></div></div>}
               </div>
             )}
           </div>
@@ -604,11 +669,12 @@ export function AnuChat() {
                   <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
                   {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
                 </div>
-                <textarea ref={textareaRef} aria-label="Message" placeholder="Ask anything…" value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={space === "devvrats" ? 2000 : account?.user ? 4000 : 1000} />
+                <textarea ref={textareaRef} onFocus={() => setComposerFocused(true)} onBlur={() => setComposerFocused(false)} aria-label="Message" placeholder="Ask anything…" value={input} onChange={(event) => updateInput(event.target.value)} onKeyDown={handleKeyDown} rows={1} maxLength={space === "devvrats" ? 2000 : account?.user ? 4000 : 1000} />
                 {busy ? <button type="button" className="send-button stop-button" aria-label="Stop response" onClick={() => requestRef.current?.abort()}><Square size={13} fill="currentColor" /></button> : <button type="submit" className="send-button" aria-label="Send message" disabled={!input.trim() || !historyReady}><ArrowUp size={19} /></button>}
               </div>
             </form>
-            {!account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining ?? 0} preview ${(account.remaining ?? 0) === 1 ? "message" : "messages"} available.`} Sign in with <Link href="/auth" prefetch={false} aria-label="Sign in with Devvrats">Devvrats</Link></div>}
+            {localDemo && <div className="guest-access">Local preview · simulated replies</div>}
+            {!localDemo && !account?.user && account && <div className="guest-access">{account.remaining === 0 ? "Your preview is complete." : `${account.remaining ?? 0} preview ${(account.remaining ?? 0) === 1 ? "message" : "messages"} available.`} Sign in with <Link href="/auth" prefetch={false} aria-label="Sign in with Devvrats">Devvrats</Link></div>}
             <div className="composer-footnote"><span>Anu can make mistakes. Verify what matters.</span></div>
           </div>
         </div>

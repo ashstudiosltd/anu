@@ -1,0 +1,56 @@
+.orb {
+  position: relative;
+  display: block;
+  width: min(380px, 44dvh, 76vw);
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.orb:focus-visible { outline: 1px solid var(--muted); outline-offset: -25px; }
+.canvas { position: relative; display: block; width: 100%; height: 100%; }
+.fallback { position: absolute; inset: 13%; background: center / contain no-repeat url('/brands/anu-orb-plush.png'); }
+.orb:has(.canvas[data-ready='true']) .fallback { display: none; }
+@media (max-height: 640px) { .orb { width: min(220px, 31dvh); } }
+.orb { transition: width .75s cubic-bezier(.22,.61,.36,1); }
+.orb[data-chatting='true'] { width: clamp(140px, 21dvh, 200px); }
+@media (max-width: 780px) { .orb[data-chatting='true'] { width: clamp(130px, 18dvh, 170px); } }
+@media (max-height: 640px) { .orb[data-chatting='true'] { width: 100px; } }
+@media (prefers-reduced-motion: reduce) { .orb { transition: none; } }
+.presence { position: relative; display: grid; place-items: center; flex: 0 0 auto; width: 100%; padding: 0; transition: padding .75s cubic-bezier(.22,.61,.36,1); }
+.presenceChat { padding: 2px 0 14px; z-index: 1; }
+.presenceChat::before { content: ""; position: absolute; width: clamp(145px, 24dvh, 220px); aspect-ratio: 1; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(ellipse, #00000009 15%, transparent 70%); pointer-events: none; }
+.presenceChat .orb { transform: translateY(var(--scroll-drift, 0px)) rotate(var(--scroll-tilt, 0deg)); filter: drop-shadow(0 9px 15px #0000000a); }
+@media (max-height: 640px) { .presenceChat { padding-bottom: 4px; } }
+@media (prefers-reduced-motion: reduce) { .presence { transition: none; } }
+
+/* Text slips below Anu's space, with a softer edge near the composer. */
+.conversation {
+  position: relative;
+  margin-top: -22px;
+  padding-top: 22px;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--quiet) 35%, transparent) transparent;
+  mask-image: linear-gradient(to bottom, transparent, #000 46px, #000 calc(100% - 24px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 46px, #000 calc(100% - 24px), transparent);
+}
+.conversation::-webkit-scrollbar { width: 7px; }
+.conversation::-webkit-scrollbar-track { background: transparent; margin-block: 42px 24px; }
+.conversation::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--quiet) 30%, transparent); border: 2px solid transparent; background-clip: padding-box; border-radius: 20px; }
+.conversation::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--quiet) 60%, transparent); }
+@supports (animation-timeline: view()) {
+  .message { animation: messageReveal linear both; animation-timeline: view(); animation-range: entry 0% entry 22%; }
+}
+@keyframes messageReveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .conversation { scroll-behavior: auto; }
+  .message { animation: none; }
+  .presenceChat .orb { transform: none; }
+}

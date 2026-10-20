@@ -713,7 +713,7 @@ html[data-theme="light"] .composer { background: #f1eff4; border-color: #25212c0
 .brand-mode-toggle[aria-expanded="true"] .brand-mode-chevron { transform: rotate(180deg); }
 .sidebar-mode-menu { top: calc(100% + 8px); width: min(320px, calc(100vw - 30px)); }
 .mode-option-logo { display: block; width: 24px; height: 24px; flex: 0 0 24px; }
-.mode-option-logo.logo-anu { background: center / contain no-repeat url("/favicon.svg"); }
+.mode-option-logo.logo-anu { background: center / contain no-repeat url("/brands/anu-orb-plush.png"); }
 .mode-option-logo.logo-devvrats { background: center / contain no-repeat url("/brands/devvrats-mark.png"); filter: brightness(0) invert(1); }
 html[data-theme="light"] .mode-option-logo.logo-devvrats { filter: brightness(0); }
 .mode-option-copy { flex: 1; min-width: 0; }
@@ -782,3 +782,20 @@ html[data-theme="light"] .composer-input-shell { background: #fff; border-color:
   .brand-mode-toggle, .brand-mode-chevron, .mode-menu button { transition: none; }
   .composer-living-dot.dot-replying .dot-body, .composer-active-logo { animation: none !important; }
 }
+
+/* Anu's character anchors the welcome screen; small marks share her portrait. */
+.brand-dot { --dot-size: 30px; }
+.message-dot { --dot-size: 26px; }
+.composer-living-dot { --dot-size: 28px; }
+.is-welcome .welcome-wrap { padding-top: 0; gap: 0; }
+.welcome-wrap .dynamic-greeting { min-height: 40px; font-size: clamp(22px, 2.5vw, 30px); }
+@media (max-width: 780px) {
+  .brand-dot { --dot-size: 28px; }
+  .welcome-wrap .dynamic-greeting { font-size: clamp(20px, 5vw, 26px); }
+  .chat-stage.is-welcome { padding-bottom: 0; }
+}
+@media (max-height: 640px) {
+  .is-welcome .welcome-wrap { padding-block: 0; }
+  .welcome-wrap .dynamic-greeting { min-height: 32px; font-size: 22px; }
+}
+

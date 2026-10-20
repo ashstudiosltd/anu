@@ -1,5 +1,5 @@
 /* Build generates public/sw.js with a content-based release identifier. */
-const OFFLINE_CACHE = "anu-offline-0d36e5b78fa5babd";
+const OFFLINE_CACHE = "anu-offline-3cceeb79eae43999";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
