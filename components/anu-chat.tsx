@@ -25,7 +25,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }>; action?: ActionPreview };
+type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ title: string; url: string }>; action?: ActionPreview; published?: { message: string; url: string } };
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[]; space?: "anu" | "devvrats"; revision?: number; loaded?: boolean };
 const HISTORY_KEY = "anu-session-conversations-v2";
 type AccountSession = { user: { id: string; name: string } | null; remaining: number | null; loginUrl: string };
@@ -405,11 +405,11 @@ export function AnuChat() {
         }),
       });
       if (response.status === 409) { window.location.reload(); return; }
-      const data = (await response.json()) as { reply?: string; error?: string; sources?: Message["sources"]; loginRequired?: boolean; action?: ActionPreview; actionNotice?: string; historySaved?: boolean };
+      const data = (await response.json()) as { reply?: string; error?: string; sources?: Message["sources"]; loginRequired?: boolean; action?: ActionPreview; published?: Message["published"]; actionNotice?: string; historySaved?: boolean };
       if (requestIdentity !== identityRef.current) return;
       if (!account.user && (response.ok || data.loginRequired)) setAccount((current) => current ? {...current, remaining: data.loginRequired ? 0 : Math.max(0, (current.remaining ?? 5)-1)} : current);
       if (!response.ok) throw new Error(data.error || "Anu couldn't answer just now. Please try again.");
-      const completedMessages: Message[] = [...nextMessages, { role: "assistant", text: data.reply || "I couldn't form a response. Try asking another way.", sources: data.sources, action: data.action }];
+      const completedMessages: Message[] = [...nextMessages, { role: "assistant", text: data.reply || "I couldn't form a response. Try asking another way.", sources: data.sources, action: data.action, published: data.published }];
       setMessages(completedMessages);
       setFreshReply(completedMessages.length - 1);
       setConversations((current) => fitHistory([
@@ -585,6 +585,7 @@ export function AnuChat() {
                       {message.role === "assistant" ? <AnuMessage text={message.text} fresh={index === freshReply} /> : <p>{message.text}</p>}
                       {space === "devvrats" && message.sources?.length ? <div className="source-list">{message.sources.map((source) => <a key={source.url} className="source-link" href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</div> : null}
                       {message.action && <AnuActionCard action={message.action} endpoint="/api/sabha/actions" />}
+                      {message.published && <div className="anu-action-card" role="status"><strong>{message.published.message}</strong><a href={`https://sabha.devvrats.in${message.published.url}`} target="_blank" rel="noreferrer">View in Sabha ↗</a></div>}
                     </div>
                   </article>)}
                 </div>
