@@ -25,6 +25,14 @@ export async function POST(request: Request) {
     if (!body || typeof body.message !== "string" || body.message.length > 2000 || !body.message.trim() || !body.context || !Array.isArray(body.context.sources) || body.context.sources.length > 6) return json({ error: "Invalid request." }, 400);
     if (body.history != null && (!Array.isArray(body.history) || body.history.length > 8 || body.history.some((item: {role?: string; text?: string}) => !item || !["user","assistant"].includes(item.role || "") || typeof item.text !== "string" || item.text.length > 4000))) return json({ error: "Invalid conversation." }, 400);
     if (body.personalization != null && (!body.personalization || typeof body.personalization !== "object" || typeof body.personalization.remember !== "string" || body.personalization.remember.length > 1500 || typeof body.personalization.responseStyle !== "string" || body.personalization.responseStyle.length > 1000)) return json({ error: "Invalid profile preferences." }, 400);
+    if (body.personalization?.profile != null) {
+      const profile = body.personalization.profile;
+      if (!profile || typeof profile !== "object" || Array.isArray(profile)) return json({ error: "Invalid profile context." }, 400);
+      for (const [key, limit] of Object.entries({ introduction: 500, role: 80, skills: 500, interests: 500 })) {
+        if (typeof profile[key] !== "string" || profile[key].length > limit) return json({ error: "Invalid profile context." }, 400);
+      }
+      body.personalization.profile = { introduction: profile.introduction, role: profile.role, skills: profile.skills, interests: profile.interests };
+    }
     for (const source of body.context.sources) {
       if (!source || typeof source.id !== "string" || !/^[a-z0-9-]{1,80}$/i.test(source.id) || !["project", "blog", "feed", "clan", "notification", "repository"].includes(source.kind) || typeof source.title !== "string" || typeof source.text !== "string" || source.text.length > (source.kind === "repository" ? 24000 : 6000)) return json({ error: "Invalid context." }, 400);
     }

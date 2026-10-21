@@ -1,10 +1,13 @@
 "use client";
 
+import { AnuProfile } from "./anu/profile";
+
 import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { AnuOrb } from "./anu/orb";
 import orbStyles from "./anu/orb.module.css";
+import composerStyles from "./anu/composer-wordmark.module.css";
 import { useTheme } from "next-themes";
 import { AnuActionCard, type ActionPreview } from "./anu/action-card";
 import { AnuPwa } from "./anu-pwa";
@@ -32,8 +35,8 @@ type Message = { role: "user" | "assistant"; text: string; sources?: Array<{ tit
 type Conversation = { id: string; title: string; updatedAt: number; messages: Message[]; space?: "anu" | "devvrats"; revision?: number; loaded?: boolean };
 const HISTORY_KEY = "anu-session-conversations-v2";
 type AccountSession = { user: { id: string; name: string } | null; remaining: number | null; loginUrl: string };
-type AnuPreferences = { remember: string; response_style: string; theme: "light" | "dark" | "system" };
-type MemberProfile = { account: { id: string; name: string; username: string | null; email: string | null }; preferences: AnuPreferences; hasPreferences: boolean };
+type AnuPreferences = import("@/lib/anu/profile-types").AnuMemberPreferences;
+type MemberProfile = import("@/lib/anu/profile-types").AnuMemberProfile;
 const MAX_CONVERSATIONS = 20;
 const MAX_STORED_CHARACTERS = 350_000;
 
@@ -81,13 +84,21 @@ function restoreHistory(raw: string | null): Conversation[] {
   }
 }
 
-type DotState = "idle" | "listening" | "thinking" | "replying";
-
-function LivingDot({ state = "idle", energy = 0, className = "" }: { state?: DotState; energy?: number; className?: string }) {
-  return <span className={`living-dot dot-${state} ${className}`} style={{ "--dot-energy": energy } as CSSProperties} aria-hidden="true"><Image className="dot-body" src="/brands/anu-orb-plush.png" width={512} height={512} alt="" /></span>;
-}
-
-export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
+export function AnuChat({ localDemo = false, embedded = false }: { localDemo?: boolean; embedded?: boolean }) {
+  const [pageFocus, setPageFocus] = useState<{kind: string; id: string} | undefined>();
+  useEffect(() => {
+    if (!embedded) return;
+    const receive = (event: MessageEvent) => {
+      const local = process.env.NODE_ENV !== "production" && /^http:\/\/(localhost|127\.0\.0\.1):[0-9]+$/.test(event.origin);
+      if (event.source !== window.parent || (event.origin !== "https://sabha.devvrats.in" && !local) || event.data?.type !== "anu:context") return;
+      const focus = event.data.focus;
+      if (!focus) { setPageFocus(undefined); return; }
+      if (["project", "blog", "feed", "clan", "notification"].includes(focus.kind) && typeof focus.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(focus.id)) setPageFocus({ kind: focus.kind, id: focus.id });
+    };
+    window.addEventListener("message", receive);
+    window.parent.postMessage({ type: "anu:ready" }, "*"); // Readiness only: no account or conversation data.
+    return () => window.removeEventListener("message", receive);
+  }, [embedded]);
   const { resolvedTheme, setTheme } = useTheme();
   const currentTheme = useRef(resolvedTheme);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -120,7 +131,7 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
   const [search, setSearch] = useState("");
   const [searchMatches, setSearchMatches] = useState<Conversation[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [space, setSpace] = useState<"anu" | "devvrats">("anu");
+  const [space, setSpace] = useState<"anu" | "devvrats">(embedded ? "devvrats" : "anu");
   const [devvratsOpen, setDevvratsOpen] = useState(false);
   const devvratsRef = useRef<HTMLDialogElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -176,17 +187,20 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
   }, [accountId, setTheme]);
 
   async function saveProfile() {
+    if (profileSaving || !accountId) return;
+    const savingIdentity = identityRef.current;
     setProfileSaving(true);
     setProfileNotice("");
     try {
-      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profileDraft) });
+      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", "x-anu-account": accountId || "guest" }, body: JSON.stringify(profileDraft) });
       const data = await response.json() as { preferences?: AnuPreferences; error?: string };
       if (!response.ok || !data.preferences) throw new Error(data.error || "Your profile could not be saved.");
+      if (savingIdentity !== identityRef.current) return;
       setMemberProfile((current) => current ? { ...current, preferences: data.preferences!, hasPreferences: true } : current);
       setProfileDraft(data.preferences);
       setTheme(data.preferences.theme);
       setProfileNotice("Your profile is saved and synced with Devvrats.");
-    } catch (error) { setProfileNotice(error instanceof Error ? error.message : "Your profile could not be saved."); }
+    } catch (error) { if (savingIdentity === identityRef.current) setProfileNotice(error instanceof Error ? error.message : "Your profile could not be saved."); }
     finally { setProfileSaving(false); }
   }
 
@@ -195,14 +209,14 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
     setProfileDraft((current) => ({ ...current, theme: nextTheme }));
     if (!visibleProfile) return;
     try {
-      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...visibleProfile.preferences, theme: nextTheme }) });
+      const response = await fetch("/api/profile", { method: "PUT", headers: { "Content-Type": "application/json", "x-anu-account": accountId || "guest" }, body: JSON.stringify({ ...visibleProfile.preferences, theme: nextTheme }) });
       const data = await response.json() as { preferences?: AnuPreferences };
       if (response.ok && data.preferences) setMemberProfile((current) => current ? { ...current, preferences: data.preferences!, hasPreferences: true } : current);
     } catch { /* The chosen theme remains active on this device if sync is unavailable. */ }
   }
 
   function chooseSpace(next: "anu" | "devvrats") {
-    if (next === "devvrats" && !account?.user) { setDevvratsOpen(true); return; }
+    if (next === "devvrats" && !account?.user && !localDemo) { setDevvratsOpen(true); return; }
     if (busy) return;
     if (next === space) return;
     setHistoryReady(false);
@@ -464,7 +478,7 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
         body: JSON.stringify({
           message: text,
           space,
-          ...(space === "devvrats" ? { scope: `portal:${conversationId}`, turnId: crypto.randomUUID() } : { history: contextHistory }),
+          ...(space === "devvrats" ? { scope: `portal:${conversationId}`, turnId: crypto.randomUUID(), ...(pageFocus ? { focus: pageFocus } : {}) } : { history: contextHistory }),
         }),
       });
       if (response.status === 409) { window.location.reload(); return; }
@@ -574,7 +588,7 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
 
   const localMatches = conversations.filter((conversation) => !search.trim() || `${conversation.title} ${conversation.messages.map((message) => message.text).join(" ")}`.toLowerCase().includes(search.toLowerCase().trim()));
   const visibleConversations = searchOpen && search.trim() && account?.user && searchMatches ? [...searchMatches, ...localMatches.filter((item) => !searchMatches.some((match) => match.id === item.id))].slice(0, 20) : localMatches;
-  const firstName = account?.user?.name.trim().split(/\s+/)[0] || "DEVVRAT";
+  const firstName = (visibleProfile?.account.name || account?.user?.name)?.trim().split(/\s+/)[0] || "DEVVRAT";
 
   return (
     <main style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties} className={`anu-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${mobileNav ? "nav-is-open" : ""}`}>
@@ -583,8 +597,12 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
         <div className="brand-lockup">
           <div className="brand-mode-wrap">
             <button className="brand-mode-toggle" aria-haspopup="menu" aria-expanded={sidebarModeOpen} aria-label={`Switch chat mode. Current mode: ${space === "anu" ? "Anu" : "Devvrats"}`} onClick={() => setSidebarModeOpen((open) => !open)}>
-              <LivingDot className="brand-dot" />
-              <span className="brand-word">anu<span>.</span></span>
+              <span className={`brand-dot ${composerStyles.modeMark}`} key={space} aria-hidden="true">
+                <Image src={space === "anu" ? "/brands/anu-orb-soft.png" : "/brands/devvrats-mark.png"} width={64} height={64} alt="" className={space === "devvrats" ? composerStyles.devvratsMark : composerStyles.anuMark} />
+              </span>
+              <span className={`brand-word ${space === "devvrats" ? composerStyles.devvratsWord : ""}`} aria-label={space === "anu" ? "anu" : "devvrats"}>
+                {space === "anu" ? <>a<span className="brand-accent">n</span>u<span className="brand-accent">.</span></> : "devvrats."}
+              </span>
               <ChevronDown className="brand-mode-chevron" size={15} />
             </button>
             {sidebarModeOpen && <><button className="mode-menu-dismiss" aria-label="Close mode menu" onClick={() => setSidebarModeOpen(false)} /><div className="mode-menu sidebar-mode-menu" role="menu" aria-label="Choose Anu mode"><button type="button" role="menuitemradio" aria-checked={space === "anu"} onClick={() => { if (space !== "anu") chooseSpace("anu"); setSidebarModeOpen(false); }}><span className="mode-option-logo logo-anu" aria-hidden="true" /><span className="mode-option-copy"><strong>Anu</strong><small>Your guide within Devvrats</small></span>{space === "anu" && <span className="mode-check">✓</span>}</button><button type="button" role="menuitemradio" aria-checked={space === "devvrats"} onClick={() => { if (space !== "devvrats") chooseSpace("devvrats"); setSidebarModeOpen(false); }}><span className="mode-option-logo logo-devvrats" aria-hidden="true" /><span className="mode-option-copy"><strong>Devvrats</strong><small>Explore Sabha with Anu</small></span>{space === "devvrats" && <span className="mode-check">✓</span>}</button></div></>}
@@ -637,7 +655,7 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
             nearBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
           }}>
             {messages.length === 0 ? (
-              <div className="welcome-wrap">
+              <div className={`welcome-wrap ${composerStyles.welcome}`}>
                 <h1 key={welcomeIndex} className="dynamic-greeting">
                   {welcomeIndex === -1 ? <>Namastey, <span className="greeting-highlight">{firstName}</span>.</> : welcomeIndex === 0 ? <>What is <span className="greeting-highlight">Anu</span>?</> : welcomeIndex === 1 ? <>What is <span className="greeting-highlight">Pata</span>?</> : <><span className="greeting-highlight">{firstName}</span>, what are you building?</>}
                 </h1>
@@ -659,12 +677,17 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
             )}
           </div>
 
-          <div className="composer-dock" ref={composerRef}>
-            <form className="composer" onSubmit={handleSubmit}>
-              <div className="composer-meta">
-                {space === "anu" ? <LivingDot className="composer-living-dot" state={busy ? "replying" : input.trim() ? "listening" : "idle"} energy={Math.min(input.trim().length / 80, 1)} /> : <span className={`composer-active-logo logo-devvrats ${busy ? "brand-replying" : input.trim() ? "brand-listening" : ""}`} aria-hidden="true" />}
+          <div className={`composer-dock ${composerStyles.dock}`} ref={composerRef}>
+            <form className={`composer ${composerStyles.composer}`} onSubmit={handleSubmit}>
+              <div className={`composer-meta ${composerStyles.header}`} data-mode={space} role="status" aria-label={space === "anu" ? "anu." : "devvrats."} aria-live="polite" aria-atomic="true">
+                <span className={composerStyles.wordmarkStage}>
+                  <span className={composerStyles.wordmark} data-mode="anu" data-active={space === "anu"} aria-hidden="true">
+                    a<span className={composerStyles.accent}>n</span>u<span className={composerStyles.accent}>.</span>
+                  </span>
+                  <span className={composerStyles.wordmark} data-mode="devvrats" data-active={space === "devvrats"} aria-hidden="true">devvrats.</span>
+                </span>
               </div>
-              <div className="composer-input-shell">
+              <div className={`composer-input-shell ${composerStyles.inputShell}`}>
                 <div className="composer-add-wrap">
                   <button type="button" className="icon-button composer-add" aria-label="Chat options" aria-expanded={composerMenu} onClick={() => setComposerMenu((open) => !open)}><Plus size={20} /></button>
                   {composerMenu && <><button type="button" className="composer-menu-dismiss" aria-label="Close chat options" onClick={() => setComposerMenu(false)} /><div className="composer-menu"><button type="button" onClick={() => { setComposerMenu(false); startNewChat(); }} disabled={busy || !historyReady}><Plus size={15} />New chat</button><button type="button" onClick={() => { setComposerMenu(false); setPrivacyOpen(true); }}><ShieldCheck size={15} />Memory &amp; privacy</button></div></>}
@@ -688,18 +711,7 @@ export function AnuChat({ localDemo = false }: { localDemo?: boolean }) {
       <dialog ref={profileRef} className="privacy-dialog profile-dialog" aria-labelledby="profile-heading" onClose={() => setProfileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setProfileOpen(false); }}>
         <div className="dialog-heading"><UserRound size={23} /><button className="icon-button" aria-label="Close profile" onClick={() => setProfileOpen(false)}><X size={18} /></button></div>
         <h2 id="profile-heading">Your Anu profile</h2>
-        {!account?.user ? <><p>Sign in with Devvrats to sync your profile and preferences across your devices.</p><Link className="devvrats-cta" href={account?.loginUrl || "/auth"}>Continue with Devvrats <ArrowUpRight size={16} /></Link></> : <>
-          <section className="profile-account"><span className="profile-avatar"><UserRound size={19} /></span><div><strong>{visibleProfile?.account.name || account.user.name}</strong><span>{visibleProfile?.account.email || "Signed in with Devvrats"}</span>{visibleProfile?.account.username && <span>@{visibleProfile.account.username}</span>}</div><a href="https://sabha.devvrats.in/settings/profile" target="_blank" rel="noreferrer">Manage account <ArrowUpRight size={13} /></a></section>
-          <label className="profile-label" htmlFor="profile-remember">What should Anu remember about you?</label>
-          <textarea id="profile-remember" className="profile-textarea" maxLength={1500} placeholder="Your role, goals, projects, or details that help Anu give relevant answers…" value={profileDraft.remember} onChange={(event) => setProfileDraft((current) => ({ ...current, remember: event.target.value }))} />
-          <label className="profile-label" htmlFor="profile-style">How would you like Anu to respond?</label>
-          <textarea id="profile-style" className="profile-textarea profile-style" maxLength={1000} placeholder="For example: concise answers, explain unfamiliar terms, use examples…" value={profileDraft.response_style} onChange={(event) => setProfileDraft((current) => ({ ...current, response_style: event.target.value }))} />
-          <label className="profile-label">Theme</label>
-          <div className="profile-theme" role="group" aria-label="Choose theme"><button type="button" aria-pressed={profileDraft.theme === "light"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "light" }))}>Light</button><button type="button" aria-pressed={profileDraft.theme === "dark"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "dark" }))}>Dark</button><button type="button" aria-pressed={profileDraft.theme === "system"} onClick={() => setProfileDraft((current) => ({ ...current, theme: "system" }))}>System</button></div>
-          <p className="profile-privacy">Your profile notes are private to your Devvrats account and shape replies in both Anu and DEVVRATS. Anu includes them with your message when asking Google Gemini; don’t add passwords, keys, or details you wouldn’t want processed to answer you.</p>
-          {profileNotice && <p className="profile-status" role="status">{profileNotice}</p>}
-          <div className="profile-actions"><button className="profile-save" type="button" onClick={() => void saveProfile()} disabled={profileLoading || profileSaving}>{profileSaving ? "Saving…" : "Save profile"}</button>{profileLoading && <span>Syncing profile…</span>}</div>
-        </>}
+        <AnuProfile key={visibleProfile?.account.id || "guest"} profile={visibleProfile} signedIn={!!account?.user} loading={profileLoading} notice={profileNotice} saving={profileSaving} loginUrl={account?.loginUrl || "/auth"} draft={profileDraft} setDraft={setProfileDraft} savePreferences={() => void saveProfile()} onProfileChange={(profile) => { setMemberProfile(profile); }} />
       </dialog>
       <dialog ref={devvratsRef} className="devvrats-dialog" aria-labelledby="devvrats-heading" onClose={() => setDevvratsOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setDevvratsOpen(false); }}>
         <button className="icon-button devvrats-close" aria-label="Close Devvrats introduction" onClick={() => setDevvratsOpen(false)}><X size={19} /></button>

@@ -25,21 +25,21 @@ export const metadata: Metadata = {
     url: "/",
     title: shareTitle,
     description: shareDescription,
-    images: [{ url: "/social/anu-share.png?v=plush", width: 1200, height: 630, alt: "Anu’s smiling lavender orb and wordmark", type: "image/png" }],
+    images: [{ url: "/social/anu-share.png?v=roboto-wordmark", width: 1200, height: 630, alt: "Anu’s lavender orb and Roboto wordmark with a lavender n and period", type: "image/png" }],
   },
   twitter: {
     card: "summary_large_image",
     title: shareTitle,
     description: shareDescription,
-    images: [{ url: "/social/anu-share.png?v=plush", alt: "Anu — Your AI companion within Devvrats" }],
+    images: [{ url: "/social/anu-share.png?v=roboto-wordmark", alt: "Anu — Your AI companion within Devvrats" }],
   },
   applicationName: "Anu",
   appleWebApp: { capable: true, title: "Anu", statusBarStyle: "default" },
   formatDetection: { telephone: false },
   icons: {
-    apple: [{ url: "/icons/anu-apple-180.png?v=plush", sizes: "180x180", type: "image/png" }],
-    icon: "/favicon.svg?v=plush",
-    shortcut: "/favicon.svg?v=plush",
+    apple: [{ url: "/icons/anu-apple-180.png?v=soft", sizes: "180x180", type: "image/png" }],
+    icon: "/favicon.svg?v=soft",
+    shortcut: "/favicon.svg?v=soft",
   },
 };
 

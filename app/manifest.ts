@@ -14,9 +14,9 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "en",
     categories: ["education", "productivity"],
     icons: [
-      { src: "/icons/anu-192.png?v=plush", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/anu-512.png?v=plush", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/anu-maskable-512.png?v=plush", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/icons/anu-192.png?v=soft", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/anu-512.png?v=soft", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icons/anu-maskable-512.png?v=soft", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

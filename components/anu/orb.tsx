@@ -1,20 +1,11 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useId, type RefObject } from "react";
 import styles from "./orb.module.css";
 
-// Keep all ten expressions; her feelings now follow the interaction and words.
+// Her live expressions are gentle: curious, thinking, happy, and a playful click.
 function feelingFor(text: string) {
-  if (/\b(haha|hehe|lol|happy|love|yay|joy|great)\b/i.test(text)) return 1;
-  if (/\b(sad|miss|cry|lonely|sorry)\b/i.test(text)) return 2;
-  if (/\b(angry|mad|furious|hate)\b/i.test(text)) return 3;
-  if (/\b(anxious|worried|stress|nervous)\b/i.test(text)) return 4;
-  if (/\b(scared|fear|afraid|terrified)\b/i.test(text)) return 5;
-  if (/\b(ew|gross|disgust)\b/i.test(text)) return 6;
-  if (/\b(bored|sleepy|tired|ennui)\b/i.test(text)) return 7;
-  if (/\b(envy|jealous)\b/i.test(text)) return 8;
-  if (/\b(shy|blush|embarrassed)\b/i.test(text)) return 9;
-  return 0;
+  return /\b(haha|hehe|lol|happy|love|yay|joy|great)\b/i.test(text) ? 1 : 0;
 }
 
 const vertexSource = `
@@ -34,24 +25,27 @@ uniform float reaction;
 uniform float action;
 uniform float curiosity;
 uniform float inspecting;
-uniform float moodWeights[10];
-uniform sampler2D fabric;
+uniform float thinking;
+uniform float moodWeights[2];
 // All accessories Anu holds use the same pure black ink.
 const vec3 accessoryInk = vec3(0.0);
-float soft(float d, float blur) { return 1.0 - smoothstep(-blur, blur, d); }
+float soft(float d, float blur) {
+  float aa = max(blur, 1.6 / max(1.0, min(resolution.x, resolution.y)));
+  return 1.0 - smoothstep(-aa, aa, d);
+}
 float oval(vec2 p, vec2 size) { return (length(p / size) - 1.0) * min(size.x, size.y); }
 
 void main() {
   float t = time;
   float joy = moodWeights[0] * .35 + moodWeights[1];
-  float sad = moodWeights[2];
-  float angry = moodWeights[3];
-  float anxious = moodWeights[4];
-  float fear = moodWeights[5];
-  float disgust = moodWeights[6];
-  float sleepy = moodWeights[7];
-  float envy = moodWeights[8];
-  float shy = moodWeights[9];
+  float sad = 0.0;
+  float angry = 0.0;
+  float anxious = 0.0;
+  float fear = 0.0;
+  float disgust = 0.0;
+  float sleepy = 0.0;
+  float envy = 0.0;
+  float shy = 0.0;
   float laugh = (.5 + .5 * sin(t * 5.6)) * (joy * action + reaction);
   float breath = sin(t * 1.65) * .006 + sin(t * .73) * .003;
   vec2 p = (gl_FragCoord.xy * 2.0 - resolution) / min(resolution.x, resolution.y);
@@ -68,36 +62,26 @@ void main() {
                 - sad * action * .014 * sigh + energy * .003;
   p /= 1.0 + attention * .012 - fear * .025;
   p /= vec2(1.0 - stretch, 1.0 + stretch);
-  float tilt = curiosity * .050 + -.035 * pointer.x + .018 * sin(t * .8)
+  float tilt = thinking * (.035 + .012 * sin(t * .85)) + curiosity * .050 + -.035 * pointer.x + .018 * sin(t * .8)
              + shy * .10 - disgust * .08 + envy * .04;
   p = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * p;
 
-  // Analytic sphere lighting and a tiny, cached fabric map: no mesh or ray march.
+  // Airy silhouette from Anu's original reference, with gentle volumetric light.
   vec2 sphere = p / vec2(.665, .675);
   float radius = length(sphere);
-  float z = sqrt(max(.0001, 1.0 - dot(sphere, sphere)));
-  vec3 normal = normalize(vec3(sphere, z));
-  vec2 uv = vec2(atan(normal.x, max(.001, normal.z)), asin(clamp(normal.y, -.999, .999))) * .55 + .5;
-  vec3 weave = texture2D(fabric, uv * 2.6).rgb;
-  float bumpX = texture2D(fabric, uv * 2.6 + vec2(.0039, 0.0)).g - weave.g;
-  float bumpY = texture2D(fabric, uv * 2.6 + vec2(0.0, .0039)).g - weave.g;
-  vec3 fiberNormal = normalize(normal + vec3(bumpX, bumpY, 0.0) * .24);
-  vec3 key = normalize(vec3(-.55, .78, 1.1));
-  float diffuse = max(0.0, dot(fiberNormal, key));
-  float fill = max(0.0, dot(normal, normalize(vec3(.9, .15, .5))));
-  float velvet = pow(1.0 - max(0.0, normal.z), 2.3);
-  float sheen = pow(max(0.0, dot(normal, normalize(key + vec3(0.0, 0.0, 1.0)))), 18.0);
-  vec3 lavender = mix(vec3(.44, .31, .60), vec3(.83, .70, .98), .24 + .76 * diffuse);
-  lavender += vec3(.09, .055, .13) * fill;
-  lavender += vec3(.15, .12, .18) * sheen * .35;
-  lavender += vec3(.24, .17, .30) * velvet * .55;
-  float pile = (weave.g - .5) * .20 + (weave.b - .5) * .075 + (weave.r - .5) * .08;
-  lavender *= 1.0 + pile;
-  lavender *= mix(.85, 1.0, smoothstep(-.7, .35, p.y));
-  lavender = mix(lavender, lavender * vec3(1.05, .96, 1.01), angry * .12);
-  float edgePile = texture2D(fabric, vec2(atan(p.y, p.x) * 2.0, radius * 4.0)).b;
-  float fuzz = (edgePile - .5) * .009;
-  float silhouette = soft(radius - 1.0 + fuzz, .012);
+  float feather = .016 + .13 * (1.0 - smoothstep(-.85, .65, sphere.y));
+  float silhouette = soft(radius - 1.0, feather);
+  // Transparent pixels leave before the lighting math, including on mobile GPUs.
+  if (silhouette < .001) { gl_FragColor = vec4(0.0); return; }
+  vec2 surface = sphere * min(1.0, .985 / max(radius, .001));
+  float z = sqrt(max(.001, 1.0 - dot(surface, surface)));
+  vec3 normal = normalize(vec3(surface, z));
+  vec3 key = normalize(vec3(-.45, .75, 1.5));
+  float diffuse = max(0.0, dot(normal, key));
+  vec3 lavender = mix(vec3(.64, .50, .82), vec3(.87, .79, .99), .26 + diffuse * .74);
+  float glow = exp(-dot(p - vec2(-.18, .30), p - vec2(-.18, .30)) / .19);
+  lavender += vec3(.025, .025, .035) * glow;
+  lavender *= .96 + .04 * smoothstep(-.65, .5, p.y);
   vec3 color = lavender;
 
   // Morph shared face geometry, rather than fading between separate faces.
@@ -105,14 +89,14 @@ void main() {
   gaze.y -= curiosity * .055;
   float lift = inspecting * inspecting * (3.0 - 2.0 * inspecting);
   vec2 lensCenter = vec2(.135 + .20 * (1.0 - lift),
-                        .31 - .075 * (1.0 - lift) + .003 * sin(t * 1.15) * lift) + gaze;
+                        .37 - .075 * (1.0 - lift) + .003 * sin(t * 1.15) * lift) + gaze;
   float lensDistance = length(p - lensCenter);
   float lensInside = soft(lensDistance - .125, .006) * inspecting;
   vec2 facePoint = mix(p, lensCenter + (p - lensCenter) / 1.32, lensInside);
   gaze.y -= sad * .025 + shy * .015 + sleepy * .015;
   gaze.x += disgust * .025 + shy * .025 + anxious * .012 * sin(t * 1.6);
-  float eyeWidth = .053 + fear * .008 + envy * .005;
-  float eyeHeight = .063 - curiosity * .005 + anxious * .014 + fear * .018 - sleepy * .035;
+  float eyeWidth = .059 + fear * .008 + envy * .005;
+  float eyeHeight = .066 + thinking * .003 - curiosity * .005 + anxious * .014 + fear * .018 - sleepy * .035;
   float slant = angry * .4 - sad * .28 - fear * .16 + disgust * .22 - shy * .13;
   gaze.y -= action * (sad * .018 * sigh + shy * .025 * sigh);
   gaze.x += action * (envy * .022 * sin(t * .9) + disgust * .016 * sin(t * .8));
@@ -124,26 +108,28 @@ void main() {
   float eyeSheen = 0.0;
   for (int i = 0; i < 2; i++) {
     float side = i == 0 ? -1.0 : 1.0;
-    vec2 q = facePoint - gaze - vec2(side * .105, .335 + .008 * sin(t * .9)
+    vec2 q = facePoint - gaze - vec2(side * .105, .395 + .006 * sin(t * .9)
       + side * curiosity * .011);
-    float a = side * slant + curiosity * side * .10;
+    float a = side * slant + curiosity * side * .10 - thinking * side * .055;
     q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
     q.y /= open;
     float dome = max(oval(q, vec2(eyeWidth, eyeHeight)), -.022 - q.y);
-    eyes = max(eyes, soft(dome, .0025));
+    eyes = max(eyes, soft(dome * open, .0015));
     eyeContact = max(eyeContact, soft(dome - .007, .006));
     eyeSheen = max(eyeSheen, exp(-dot(q - vec2(-.014, .019), q - vec2(-.014, .019)) / .00032));
   }
-  float smile = -.055 * (moodWeights[0] + moodWeights[1])
+  float smile = -.065 * (moodWeights[0] + moodWeights[1])
               + .035 * (sad + angry) + .006 * anxious
               + .018 * disgust + .008 * sleepy - .025 * envy - .018 * shy;
   smile = mix(smile, -.065, reaction * .85);
   smile = mix(smile, -.016, curiosity * .65);
-  float width = .164 - curiosity * .035 - sad * .045 - fear * .045 - shy * .075 - sleepy * .05;
+  smile = mix(smile, -.035, thinking);
+  float width = .185 - curiosity * .035 - sad * .045 - fear * .045 - shy * .075 - sleepy * .05;
   width += laugh * .012 + action * (anxious * .005 * sin(t * 1.4) - sad * .008 * sigh);
   smile += action * (envy * .006 * sin(t * .9) + disgust * .006 * sin(t * .8));
-  float thick = .014 + joy * .007 + laugh * .013;
-  vec2 mouth = p - gaze - vec2(0.0, .205);
+  width = mix(width, .13, thinking);
+  float thick = .019 + joy * .007 + laugh * .013;
+  vec2 mouth = p - gaze - vec2(0.0, .255);
   mouth.y -= fear * .008 * sin(mouth.x * 65.0 + t * 1.4);
   float x = clamp(mouth.x, -width, width);
   float curve = smile * (1.0 - x * x / (width * width));
@@ -154,8 +140,8 @@ void main() {
                + exp(-dot((p - gaze - vec2(.20, .24)) * vec2(1.0, 2.0), (p - gaze - vec2(.20, .24)) * vec2(1.0, 2.0)) / .004);
   color = mix(color, vec3(.97, .43, .30), cheeks * (.25 * shy + .10 * shy * action * sigh + .04 * joy));
   // Soft contact shadows make the same familiar face feel sewn into the plush.
-  color *= 1.0 - max(eyeContact, mouthContact) * .17;
-  vec3 faceInk = vec3(.025, .018, .034) + eyeSheen * .055;
+  color *= 1.0 - max(eyeContact, mouthContact) * .065;
+  vec3 faceInk = vec3(.012, .009, .018) + eyeSheen * .012;
   color = mix(color, faceInk, max(eyes, mouthShape));
   // The little detective glass is drawn with the face, so it floats naturally.
   vec2 handleStart = lensCenter + vec2(.094, -.096);
@@ -166,12 +152,12 @@ void main() {
   color = mix(color, accessoryInk, grip * inspecting);
   float rim = soft(abs(lensDistance - .132) - .007, .002);
   color = mix(color, accessoryInk, rim * inspecting);
-  gl_FragColor = vec4(color, silhouette);
+  gl_FragColor = vec4(color * silhouette, silhouette);
 }
 `;
 
 type AnuOrbProps = {
-  inputRef: RefObject<HTMLTextAreaElement | null>;
+  inputRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   value: string;
   focused: boolean;
   busy?: boolean;
@@ -181,6 +167,7 @@ type AnuOrbProps = {
 
 export function AnuOrb({ inputRef, value, focused, busy = false, chatting = false, replying = false }: AnuOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const gradientId = `anu-${useId().replace(/:/g, "")}`;
   const wakeRef = useRef<() => void>(() => {});
   const inputActivity = useRef({ focused: false, typedAt: -10000, hasText: false, deleting: false });
   const selectedRef = useRef(0);
@@ -233,9 +220,10 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       else if (type.startsWith("insert")) activity.typedAt = performance.now();
       wakeRef.current();
     };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+    const onKeyDown = (event: Event) => {
+      const key = (event as globalThis.KeyboardEvent).key;
       // Backspace/Delete also count when the field is already empty.
-      if (event.key === "Backspace" || event.key === "Delete") stopInspecting();
+      if (key === "Backspace" || key === "Delete") stopInspecting();
     };
     field.addEventListener("input", onInput);
     field.addEventListener("keydown", onKeyDown);
@@ -253,7 +241,9 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
     const canvas = canvasRef.current;
     if (!canvas) return;
     delete canvas.dataset.ready;
-    const gl = canvas.getContext("webgl", { alpha: true, antialias: false, premultipliedAlpha: false, depth: false, stencil: false, powerPreference: "low-power" });
+    canvas.parentElement?.classList.remove(styles.ready);
+    if (typeof ResizeObserver === "undefined" || typeof IntersectionObserver === "undefined") return;
+    const gl = canvas.getContext("webgl", { alpha: true, antialias: false, premultipliedAlpha: true, depth: false, stencil: false, powerPreference: "low-power" });
     if (!gl) return;
 
     const shaders: WebGLShader[] = [];
@@ -290,40 +280,6 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
     const position = gl.getAttribLocation(program, "position");
     gl.enableVertexAttribArray(position);
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-    // Build the material once on the CPU, then reuse one 256px texture.
-    let seed = 7319;
-    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) | 0; return (seed >>> 0) / 4294967296; };
-    const texels = new Uint8Array(256 * 256 * 4);
-    const grain = new Float32Array(256 * 256);
-    const tufts = new Float32Array(16 * 16);
-    for (let i = 0; i < grain.length; i++) grain[i] = random();
-    for (let i = 0; i < tufts.length; i++) tufts[i] = random();
-    const tuft = (x: number, y: number) => tufts[(y & 15) * 16 + (x & 15)];
-    for (let y = 0; y < 256; y++) {
-      for (let x = 0; x < 256; x++) {
-        const offset = (y * 256 + x) * 4;
-        const tx = x / 16, ty = y / 16;
-        const ix = Math.floor(tx), iy = Math.floor(ty);
-        const fx = tx - ix, fy = ty - iy;
-        const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-        const upper = tuft(ix, iy) * (1 - sx) + tuft(ix + 1, iy) * sx;
-        const lower = tuft(ix, iy + 1) * (1 - sx) + tuft(ix + 1, iy + 1) * sx;
-        const pile = grain[y * 256 + x] * .55 + grain[((y + 1) & 255) * 256 + ((x + 1) & 255)] * .3 + grain[((y + 2) & 255) * 256 + ((x + 1) & 255)] * .15;
-        texels[offset] = Math.round((upper * (1 - sy) + lower * sy) * 255);
-        texels[offset + 1] = Math.round(pile * 255);
-        texels[offset + 2] = Math.round(random() * 255);
-        texels[offset + 3] = 255;
-      }
-    }
-    const texture = gl.createTexture();
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 256, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.uniform1i(gl.getUniformLocation(program, "fabric"), 0);
     const resolution = gl.getUniformLocation(program, "resolution");
     const time = gl.getUniformLocation(program, "time");
     const pointer = gl.getUniformLocation(program, "pointer");
@@ -334,6 +290,8 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
     const actionUniform = gl.getUniformLocation(program, "action");
     const curiosityUniform = gl.getUniformLocation(program, "curiosity");
     const inspectingUniform = gl.getUniformLocation(program, "inspecting");
+    const thinkingUniform = gl.getUniformLocation(program, "thinking");
+    let thinkingLevel = 0;
     let inspectingLevel = 0;
     let inspectingVelocity = 0;
     let curiosityLevel = 0;
@@ -342,7 +300,7 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
     let reactionLevel = 0;
     let actionLevel = .5;
     const moodUniform = gl.getUniformLocation(program, "moodWeights[0]");
-    const weights = new Float32Array(10);
+    const weights = new Float32Array(2);
     weights[0] = 1;
     let blinkStart = -10;
     let blinkDuration = .17;
@@ -414,13 +372,19 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       gl.uniform1f(actionUniform, reducedMotion.matches ? 0 : actionLevel);
       gl.uniform1f(curiosityUniform, curiosityLevel);
       gl.uniform1f(inspectingUniform, inspectingLevel);
+      gl.uniform1f(thinkingUniform, thinkingLevel);
       gl.uniform1fv(moodUniform, weights);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
-      if (canvas.dataset.ready !== "true") canvas.dataset.ready = "true";
+      if (canvas.dataset.ready !== "true") {
+        canvas.dataset.ready = "true";
+        canvas.parentElement?.classList.add(styles.ready);
+      }
     };
     const resize = () => {
       bounds = canvas.getBoundingClientRect();
-      const ratio = Math.min(window.devicePixelRatio || 1, 1.5, 560 / Math.max(1, canvas.clientWidth));
+      // Supersample the face even on 1x displays, and cap the physical buffer.
+      const limit = Math.min(1024, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
+      const ratio = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3, limit / Math.max(1, canvas.clientWidth));
       const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
       const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
       if (canvas.width !== width) canvas.width = width;
@@ -483,6 +447,11 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
           gazeX = Math.max(-.8, Math.min(.8, (x - bounds.left - bounds.width / 2) / (bounds.width / 2)));
           gazeY = -.85;
         }
+        // A thoughtful glance up, rather than sleepy or narrowed eyes.
+        if (busyRef.current && performance.now() - inputActivity.current.typedAt > 700) {
+          gazeX = .24 + .07 * Math.sin(elapsed * .65);
+          gazeY = .22;
+        }
         // Damped springs add a tiny, soft overshoot when changing direction.
         follow.vx += ((gazeX - follow.x) * 64 - follow.vx * 16) * dt;
         follow.vy += ((gazeY - follow.y) * 64 - follow.vy * 16) * dt;
@@ -501,7 +470,8 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       // A damped lift lets her ease the glass up and gently settle it.
       curiosityVelocity += ((curiosityTarget - curiosityLevel) * 38 - curiosityVelocity * 12.5) * dt;
       curiosityLevel = Math.max(0, Math.min(1, curiosityLevel + curiosityVelocity * dt));
-      if (busyRef.current) selectedRef.current = 7;
+      if (busyRef.current) selectedRef.current = 0;
+      thinkingLevel += ((busyRef.current ? 1 : 0) - thinkingLevel) * (1 - Math.exp(-4.5 * dt));
       const moodEase = 1 - Math.exp(-3.8 * dt);
       reactionLevel += (reactionRef.current - reactionLevel) * (1 - Math.exp(-7 * dt));
       actionLevel += (actionRef.current - actionLevel) * (1 - Math.exp(-5 * dt));
@@ -511,6 +481,7 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       }
       reactionRef.current = Math.max(0, reactionRef.current - dt * .65);
       if (reducedMotion.matches) {
+        thinkingLevel = busyRef.current ? 1 : 0;
         curiosityLevel = curiosityTarget;
         inspectingLevel = inspectingTarget;
         for (let i = 0; i < weights.length; i++) weights[i] = i === selectedRef.current ? 1 : 0;
@@ -538,10 +509,11 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       cancelAnimationFrame(frame);
       frame = 0;
       delete canvas.dataset.ready;
+    canvas.parentElement?.classList.remove(styles.ready);
     };
     canvas.addEventListener("webglcontextlost", onContextLost);
     document.addEventListener("visibilitychange", syncVisibility);
-    reducedMotion.addEventListener("change", syncVisibility);
+    reducedMotion.addEventListener?.("change", syncVisibility);
     schedule();
 
     return () => {
@@ -550,8 +522,9 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       intersection.disconnect();
       canvas.removeEventListener("webglcontextlost", onContextLost);
       delete canvas.dataset.ready;
+    canvas.parentElement?.classList.remove(styles.ready);
       document.removeEventListener("visibilitychange", syncVisibility);
-      reducedMotion.removeEventListener("change", syncVisibility);
+      reducedMotion.removeEventListener?.("change", syncVisibility);
       cancelAnimationFrame(frame);
       observer.disconnect();
       window.removeEventListener("pointermove", onPointerMove);
@@ -561,7 +534,6 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
       window.removeEventListener("blur", relax);
       window.removeEventListener("resize", resizeBounds);
       window.removeEventListener("scroll", resizeBounds);
-      gl.deleteTexture(texture);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
       shaders.forEach((shader) => gl.deleteShader(shader));
@@ -569,8 +541,23 @@ export function AnuOrb({ inputRef, value, focused, busy = false, chatting = fals
   }, [inputRef]);
 
   return (
-    <button type="button" className={styles.orb} data-chatting={chatting} onClick={play} aria-label="Make Anu giggle">
-      <span className={styles.fallback} aria-hidden="true" />
+    <button type="button" className={styles.orb} data-chatting={chatting} data-focused={focused} onClick={play} aria-label="Make Anu giggle">
+      <svg className={styles.fallback} viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+        <defs>
+          <radialGradient id={gradientId} cx="34%" cy="26%" r="83%">
+            <stop stopColor="#e3d3fc" /><stop offset=".56" stopColor="#c9afea" /><stop offset="1" stopColor="#ae8bd6" />
+          </radialGradient>
+          <filter id={`${gradientId}-soft`} x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5" /></filter>
+        </defs>
+        <ellipse cx="256" cy="265" rx="171" ry="175" fill={`url(#${gradientId})`} filter={`url(#${gradientId}-soft)`} />
+        <g className={styles.fallbackFace} fill="#100c17">
+          <g className={styles.fallbackEyes}>
+            <path d="M214 162 C214 134 244 134 244 162 Q229 167 214 162Z" />
+            <path d="M268 162 C268 134 298 134 298 162 Q283 167 268 162Z" />
+          </g>
+          <path d="M209 191 Q256 227 303 191" fill="none" stroke="#100c17" strokeWidth="11" strokeLinecap="round" />
+        </g>
+      </svg>
       <canvas ref={canvasRef} aria-hidden="true" className={styles.canvas} />
     </button>
   );

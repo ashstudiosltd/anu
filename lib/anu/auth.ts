@@ -25,7 +25,9 @@ export async function memberIdentity() {
   const { data: { user }, error } = await client.auth.getUser();
   if (error && error.name !== "AuthSessionMissingError") throw new Error("Account verification unavailable");
   if (!user) return null;
-  const raw = user.user_metadata.full_name || user.user_metadata.name || "Devvrat";
+  const { data: profile, error: profileError } = await client.from("profiles").select("name").eq("id", user.id).maybeSingle();
+  if (profileError) throw new Error("Devvrats profile verification unavailable");
+  const raw = profile?.name || "Devvrat";
   const name = typeof raw === "string" ? raw.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : "Devvrat";
   return { id: user.id, name };
 }

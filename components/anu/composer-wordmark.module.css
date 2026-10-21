@@ -1,0 +1,105 @@
+.composer.composer {
+  --brand-label: #302a3d;
+  --pill-fill: #1c1a21;
+  --pill-line: #4b4358;
+  min-height: 0;
+  gap: 0;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:global(html[data-theme="light"]) .composer.composer {
+  --brand-label: #e9e0f5;
+  --pill-fill: #fff;
+  --pill-line: #cfc8d8;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+/* Solid lavender and concave shoulders form the single emerging silhouette. */
+.header.header {
+  position: relative;
+  z-index: 2;
+  width: 112px;
+  max-width: calc(100% - 44px);
+  min-height: 50px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 0 0 -1px 38px;
+  padding: 9px 17px 12px;
+  border-radius: 18px 18px 0 0;
+  background: var(--brand-label);
+  transition: width .48s cubic-bezier(.22,.61,.36,1);
+}
+.header[data-mode="devvrats"] { width: 174px; }
+.header::before, .header::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+.header::before { left: -18px; border-bottom-right-radius: 18px; box-shadow: 6px 6px 0 6px var(--brand-label); clip-path: inset(0 -8px 0 0); }
+.header::after { right: -18px; border-bottom-left-radius: 18px; box-shadow: -6px 6px 0 6px var(--brand-label); clip-path: inset(0 0 0 -8px); }
+.wordmarkStage { display: grid; align-items: center; height: 30px; }
+.wordmark {
+  display: block;
+  grid-area: 1 / 1;
+  width: max-content;
+  max-width: 100%;
+  color: var(--foreground);
+  font-family: var(--font-roboto), Roboto, sans-serif;
+  font-size: 29px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: -.045em;
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  font-synthesis: none;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(5px);
+  filter: blur(2px);
+  transition: opacity .24s ease, transform .4s cubic-bezier(.22,.61,.36,1), filter .3s ease, visibility 0s .24s;
+}
+.wordmark[data-active="true"] { opacity: 1; visibility: visible; transform: translateY(0); filter: blur(0); transition-delay: .10s, .06s, .06s, 0s; }
+.accent { color: #a78bda; }
+.wordmark[data-mode="devvrats"] { font-size: 26px; letter-spacing: -.05em; }
+.inputShell.inputShell {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 70px;
+  padding: 10px 13px 11px;
+  border: 1px solid var(--pill-line);
+  border-radius: 27px;
+  background: var(--pill-fill);
+  box-shadow: 0 7px 24px #00000014, 0 1px 3px #00000008;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+:global(html[data-theme="light"]) .inputShell.inputShell { background: var(--pill-fill); border-color: var(--pill-line); box-shadow: 0 7px 26px #3223440a, 0 1px 3px #32234406; }
+.inputShell.inputShell:focus-within { border-color: #a78bca; box-shadow: 0 0 0 3px #a78bda12, 0 7px 26px #3223440a; }
+@media (max-width: 480px) {
+  .header.header { width: 103px; min-height: 47px; margin-left: 34px; padding: 8px 15px 11px; border-radius: 16px 16px 0 0; }
+  .header[data-mode="devvrats"] { width: 159px; }
+  .wordmark { font-size: 27px; }
+  .wordmark[data-mode="devvrats"] { font-size: 24px; }
+  .inputShell.inputShell { min-height: 65px; padding: 9px 10px 10px; border-radius: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { .inputShell.inputShell, .header.header, .wordmark { transition: none; transition-delay: 0s; } .wordmark { transform: none; filter: none; } }
+
+/* Tighten only the welcome grouping, leaving the conversation dock anchored. */
+.welcome.welcome { padding-top: 0; padding-bottom: 5px; }
+:global(.is-welcome) .dock.dock { padding-top: 5px; }
+.modeMark { display: inline-grid; place-items: center; flex: 0 0 auto; width: var(--dot-size, 30px); height: var(--dot-size, 30px); animation: brandAppear .3s ease both; }
+.modeMark img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.devvratsMark { filter: brightness(0) invert(1); }
+:global(html[data-theme="light"]) .devvratsMark { filter: brightness(0); }
+.devvratsWord.devvratsWord { font-size: 18px; letter-spacing: -.045em; }
+@keyframes brandAppear { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .modeMark { animation: none; } }
